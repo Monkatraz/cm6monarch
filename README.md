@@ -1,5 +1,5 @@
 # `cm6-monarch`
-This is a 'fork' of the Monaco Editor's Monarch syntax highlighter to CodeMirror 6. It is generally compatible with Monaco Editor language sources. In contrast to the original implementation, this version of Monarch has been _radically supercharged_ with many backend improvements. The most useful new features are likely the `opens`, `closes` syntax tree additions, and the usage of sticky regexes in the backend, allowing for full lookbehind support.
+This is a 'fork' of the [Monaco Editor's](https://github.com/Microsoft/monaco-editor) Monarch syntax highlighter to [CodeMirror 6](https://github.com/codemirror/codemirror.next/). It is generally compatible with Monaco Editor language sources. In contrast to the original implementation, this version of Monarch has been _radically supercharged_ with many backend improvements. The most useful new features are likely the `opens`, `closes` syntax tree additions, and the usage of sticky regexes in the backend, allowing for full lookbehind support.
 
 **Please note:** This isn't done. It does work - and I don't think it's too buggy, but it's missing a few essential features. I'm working on it!
 
@@ -167,6 +167,11 @@ If you're making an extension to Markdown, cobbling together a wiki-lang, creati
 
 ### Is it fast?
 I think! It's definitely not slow. Monarch's runtime tokenizer is actually really tiny and simple. The most complex portions of Monarch are almost certainly its lexer compiling. The runtime itself uses _a lot_ of caching in the backend, and tries not to eat your RAM while it does it. I don't know yet how it handles really huge documents - but in theory, the method of caching the parser is using is being used to fullest extent it probably can be.
+
+### Did you make this because your special snowflake version of Markdown needed syntax highlighting?
+Yes.
+
+![](https://i.imgur.com/b2fQ6RW.png)
 
 ### Can I get some more technical details?
 Sure! Generally, Monarch is through-and-through designed to be a simple to use tokenizer. It (in its original form) could not even nest scopes - each token got one scope, and one scope only. 
