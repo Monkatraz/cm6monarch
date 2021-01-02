@@ -3,6 +3,7 @@
   "version": "0.1",
   "description": "A (supercharged) port of the Monaco Editor's Monarch syntax highlighter to CodeMirror 6.",
   "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc"
   },

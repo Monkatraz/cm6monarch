@@ -9,8 +9,7 @@ import type { Input } from 'lezer'
 import type { PartialParse } from 'lezer-tree'
 import type { Extension } from '@codemirror/next/state'
 import type { EditorParseContext } from '@codemirror/next/language'
-import type { ILexer } from './monarch/monarchCommon'
-import type { IMonarchLanguage } from './monarch/monarchTypes'
+import type { IMonarchLanguage, ILexer } from './monarch/monarchCommon'
 
 type TagList = { [name: string]: Tag }
 
@@ -71,79 +70,15 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 
 // -- PARSER
 
-// export const conf = {
-//   comments: {
-//     blockComment: ['/*', '*/'],
-//     lineComment: '//'
-//   },
-//   brackets: [
-//     ['{', '}'],
-//     ['[', ']'],
-//     ['(', ')'],
-//     ['#', '|#'],
-//     ['{++', '++}'],
-//     ['{--', '--}'],
-//     ['{~~', '~~}'],
-//     ['{==', '==}'],
-//     ['{>>', '<<}']
-//   ],
-//   autoClosingPairs: [
-//     { open: '[', close: ']' },
-//     { open: '(', close: ')' },
-//     { open: '<', close: '>', notIn: ['string'] },
-//     { open: '/*', close: '*/' },
-//     { open: '`', close: '`' },
-//     { open: '@@', close: '@@' },
-//     { open: '"', close: '"' },
-//     { open: "'", close: "'" }
-//   ],
-//   surroundingPairs: [
-//     { open: '(', close: ')' },
-//     { open: '[', close: ']' },
-//     { open: '`', close: '`' },
-//     { open: '@@', close: '@@' },
-//     { open: '"', close: '"' },
-//     { open: "'", close: "'" }
-//   ],
-//   folding: {
-//     markers: {
-//       start: new RegExp('^\\s*<!--\\s*#?region\\b.*-->'),
-//       end: new RegExp('^\\s*<!--\\s*#?endregion\\b.*-->')
-//     }
-//   }
-// }
-
-// TODO: documentation
-// TODO: new readme
-// TODO: fix local language (bundling issue probably)
 // TODO: indent handling
-
 // TODO: potentially find a way of line shifting (if new line, check next line for the string)
-// TODO: get lines list for input in case it's clipped
 // TODO: embedded languages
-
-// TODO: outdent triggers?
-// TODO: fold markers?
-// TODO: comment tokens
-// TODO: auto-opening brackets magic
 // TODO: use monarch's brace handling automatically and get brace info into nodes
-
 // TODO: add a 'configure()' field that works like a lezer parser
-
-// TODO: switch the matcher to use lastIndex and sticky to improve performance and allow lookbehinds
-
 // TODO: add an 'inline' only mode for `opens` `closes`
 // TODO: allow 'emphasis.slash' where the '.slash' makes the 'emphasis' more specific, but uses the same scope
-/*
-state handling could be handled like this:
-[
-  [/{/, { token: 'brace', opens: 'block' }]
-  [/}/, { token: 'brace', closes: 'block' }]
-  [/--/, {token: 'punctuation', wraps: 'strikethrough'}]
-]
-*/
 
-// ? inspect tokens? could be very difficult to map - maybe in the document node leave a reference to the parser
+// ? inspect tokens widgets? pls cm6 add it urself
 
 // https://gist.github.com/hyamamoto/fd435505d29ebfa3d9716fd2be8d42f0#gistcomment-2694461
 function quickHash(s: string) {

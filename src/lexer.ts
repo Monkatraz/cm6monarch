@@ -1,9 +1,6 @@
 import { fixCase, MonarchBracket, findRules, createError, isFuzzyAction, isIAction, substituteMatches, log, isString, sanitize } from './monarch/monarchCommon.js'
 import type { IRule, ILexer, FuzzyAction } from './monarch/monarchCommon'
 
-// TODO: nested langs.
-// TODO: get brace info into syntax nodes
-
 // -- UTIL. FUNCTIONS
 
 function safeRuleName(rule: IRule | null): string { return rule?.name ?? '(unknown)' }

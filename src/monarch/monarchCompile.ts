@@ -8,8 +8,7 @@
  * into a typed and checked ILexer definition.
  */
 
-import { createError, empty, substituteMatches, fixCase, MonarchBracket, stateExists, IRule, ILexerMin, FuzzyAction, IBranch, IAction, ILexer } from './monarchCommon.js'
-import type { IMonarchLanguage, IMonarchLanguageBracket } from './monarchTypes'
+import { IMonarchLanguage, IMonarchLanguageBracket, createError, empty, substituteMatches, fixCase, MonarchBracket, stateExists, IRule, ILexerMin, FuzzyAction, IBranch, IAction, ILexer } from './monarchCommon.js'
 
 /*
  * Type helpers
@@ -225,8 +224,6 @@ function createGuard(lexer: ILexerMin, ruleName: string, tkey: string, val: Fuzz
 		}
 	}
 }
-
-// TODO: cleanup compile action
 
 /**
  * Compiles an action: i.e. optimize regular expressions and case matches
