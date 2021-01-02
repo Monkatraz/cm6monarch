@@ -119,11 +119,13 @@ const myLanguage = createMonarchLanguage({
 import {EditorState} from "@codemirror/state"
 import {EditorView, keymap} from "@codemirror/view"
 import {defaultKeymap} from "@codemirror/commands"
+import {defaultHighlightStyle} from '@codemirror/highlight'
 
 const startState = EditorState.create({
   doc: "Hello World",
   extensions: [
     keymap.of(defaultKeymap),
+    defaultHighlightStyle,
     myLanguage.load()
   ]
 })
