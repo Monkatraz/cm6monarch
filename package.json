@@ -1,0 +1,18 @@
+{
+  "name": "cm6-monarch",
+  "version": "0.1",
+  "description": "A (supercharged) port of the Monaco Editor's Monarch syntax highlighter to CodeMirror 6.",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "type": "module",
+  "author": "Monkatraz",
+  "license": "MIT",
+  "dependencies": {
+    "@codemirror/next": "^0.16.0",
+    "lezer": "^0.13.1",
+    "lezer-tree": "^0.13.0",
+    "typescript": "^4.1.3"
+  }
+}

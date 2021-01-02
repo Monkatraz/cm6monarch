@@ -1,0 +1,5 @@
+# NPM
+.npm
+node_modules
+# Build folders
+/lib/
