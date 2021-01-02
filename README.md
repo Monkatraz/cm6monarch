@@ -5,12 +5,13 @@ This is a 'fork' of the Monaco Editor's Monarch syntax highlighter to CodeMirror
 
 ## Usage
 If you're wanting to make a language using Monarch, the [official tutorial/playground](https://microsoft.github.io/monaco-editor/monarch.html) is actually pretty good. A few things to note:
+- Don't use this if you think you can make a [Lezer](https://lezer.codemirror.net/) grammar. CodeMirror does better with a proper parser.
 - Currently language nesting isn't supported, I plan to get this working soon.
-- You should use the [CodeMirror 6 highlighter tags](https://codemirror.net/6/docs/ref/#highlight.tags). You can actually use your own tags/scopes, the language will automatically create them and export them for you. However, using these is not advised because they're be entirely custom to your language and hard to support.
+- You should use the [CodeMirror 6 highlighter tags](https://codemirror.net/6/docs/ref/#highlight.tags). You can actually use your own tags/scopes, the language will automatically create them and export them for you. However, using these is not advised because they'll be entirely custom to your language and hard to support.
 - The `brackets` features won't do anything - they didn't even do anything in the Monaco Editor.
 - There is no `tokenPostFix` or `outdentTriggers` properties.
 - Unlike Monarch's original implementation, this version supports lookbehind, which is of course hilariously dangerous.
-- The only significant change to the grammar is the addition of the `opens` and `closes` properties in rule actions, which I need to get around to documenting. The gist is that they allow you to state whether a token opens or closes a scope, and that will show up in the final syntax tree.
+- The only significant change to the grammar definitions is the addition of the `opens` and `closes` properties in rule actions, which I need to get around to documenting. The gist is that they allow you to state whether a token opens or closes a scope, and that will show up in the final syntax tree. This allows you to nest scopes, which you could not do in the original Monarch.
 
 To actually, y'know, use it in the code, it looks like this:
 ```ts
@@ -150,14 +151,19 @@ const myBetterStartState = EditorState.create({
 ```
 ---
 
-### Why?
-Monarch uses _regex_, and this particular version of it supports stupidly flexible regex. If you're a regex wizard, you'll like this.
+## Why?
+![The dark lord cometh](https://i.imgur.com/ARu4tSR.png)
+![it gets worse](https://i.imgur.com/9jmE31R.png)
+----
+God, I ask myself that every day.
+
+Anyways, it's because Monarch uses _regex_, and this particular version of it supports stupidly flexible regex. If you're a regex wizard, you'll like this.
 
 To be more specific about _why_, we'll start with a comparison to Lezer, which is the parser CodeMirror 6 normally uses. Lezer is a proper parser, capable of outputting beautiful syntax trees with stunningly simple grammar definitions. Seriously - go look at the official Lezer grammar for `json` files - it's really tiny and simple to understand. This parser can't do that. 
 
-However, Monarch enthusiastically allow you to commit disturbing war crimes. It has almost none of the restrictions that Lezer has. This parser can back up its input as far as you like, rematch against a token, enter phantom states, allows you to use the name of those phantom states in the tokens (wtf), now fully supports lookbehind, and probably worse things that I haven't even discovered yet. It supports all of this while not really being all that hard to use, as long as you know some regex.
+However, Monarch enthusiastically allows you to commit disturbing war crimes. It has almost none of the restrictions that Lezer has. This parser can back up its input as far as you like, rematch against a token, enter phantom states, allows you to use the name of those phantom states in the tokens (wtf), now fully supports lookbehind, and probably worse things that I haven't even discovered yet. It supports all of this while not really being all that hard to use, as long as you know some regex.
 
-If you're making an extension to Markdown, writing a wiki-lang, creating a DSL, etc. this parser might be perfect for you. If you're writing a proper grammar for a, uh, less _barbaric_ language, you'll want to make a Lezer grammar so that you get a proper syntax tree.
+If you're making an extension to Markdown, cobbling together a wiki-lang, creating a DSL, etc. this parser might be perfect for you. It lets you get syntax highlighting easily. If you're writing a proper grammar for a, uh, less _barbaric_ language, you'll want to make a Lezer grammar so that you get a proper syntax tree.
 
 ### Is it fast?
 I think! It's definitely not slow. Monarch's runtime tokenizer is actually really tiny and simple. The most complex portions of Monarch are almost certainly its lexer compiling. The runtime itself uses _a lot_ of caching in the backend, and tries not to eat your RAM while it does it. I don't know yet how it handles really huge documents - but in theory, the method of caching the parser is using is being used to fullest extent it probably can be.
