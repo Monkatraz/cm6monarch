@@ -1,8 +1,154 @@
-# CodeMirror 6 Monarch Parser
+# `cm6-monarch`
 This is a 'fork' of the Monaco Editor's Monarch syntax highlighter to CodeMirror 6. It is generally compatible with Monaco Editor language sources. In contrast to the original implementation, this version of Monarch has been _radically supercharged_ with many backend improvements. The most useful new features are likely the `opens`, `closes` syntax tree additions, and the usage of sticky regexes in the backend, allowing for full lookbehind support.
 
+**Please note:** This isn't done. It does work - and I don't think it's too buggy, but it's missing a few essential features. I'm working on it!
+
 ## Usage
--todo-
+If you're wanting to make a language using Monarch, the [official tutorial/playground](https://microsoft.github.io/monaco-editor/monarch.html) is actually pretty good. A few things to note:
+- Currently language nesting isn't supported, I plan to get this working soon.
+- You should use the [CodeMirror 6 highlighter tags](https://codemirror.net/6/docs/ref/#highlight.tags). You can actually use your own tags/scopes, the language will automatically create them and export them for you. However, using these is not advised because they're be entirely custom to your language and hard to support.
+- The `brackets` features won't do anything - they didn't even do anything in the Monaco Editor.
+- There is no `tokenPostFix` or `outdentTriggers` properties.
+- Unlike Monarch's original implementation, this version supports lookbehind, which is of course hilariously dangerous.
+- The only significant change to the grammar is the addition of the `opens` and `closes` properties in rule actions, which I need to get around to documenting. The gist is that they allow you to state whether a token opens or closes a scope, and that will show up in the final syntax tree.
+
+To actually, y'know, use it in the code, it looks like this:
+```ts
+import { createMonarchLanguage } from 'codemirror6-monarch'
+
+// Just for reference, this is the configuration interface.
+interface MonarchLanguageDefinition {
+  name: string
+  lexer: IMonarchLanguage
+  alias?: string[]
+  ext?: string[]
+  languageData?: { [name: string]: any }
+  extraExtensions?: Extension[]
+}
+
+// This uses the lexer given in the Monarch tutorial.
+// const { load, tags, description } = createMonarchLanguage({
+const myLanguage = createMonarchLanguage({
+  name: 'myLang',
+  lexer: {
+    // defaultToken: 'invalid',
+    keywords: [
+      'abstract', 'continue', 'for', 'new', 'switch', 'assert', 'goto', 'do',
+      'if', 'private', 'this', 'break', 'protected', 'throw', 'else', 'public',
+      'enum', 'return', 'catch', 'try', 'interface', 'static', 'class',
+      'finally', 'const', 'super', 'while', 'true', 'false'
+    ],
+    typeKeywords: [
+      'boolean', 'double', 'byte', 'int', 'short', 'char', 'void', 'long', 'float'
+    ],
+    operators: [
+      '=', '>', '<', '!', '~', '?', ':', '==', '<=', '>=', '!=',
+      '&&', '||', '++', '--', '+', '-', '*', '/', '&', '|', '^', '%',
+      '<<', '>>', '>>>', '+=', '-=', '*=', '/=', '&=', '|=', '^=',
+      '%=', '<<=', '>>=', '>>>='
+    ],
+    symbols:  /[=><!~?:&|+\-*\/\^%]+/,
+    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+
+    tokenizer: {
+      root: [
+        // identifiers and keywords
+        [/[a-z_$][\w$]*/, { cases: {'@typeKeywords': 'keyword',
+                                    '@keywords': 'keyword',
+                                    '@default': 'identifier' } }],
+        [/[A-Z][\w\$]*/, 'type.identifier' ],  // to show class names nicely
+
+        // whitespace
+        { include: '@whitespace' },
+
+        // delimiters and operators
+        [/[{}()\[\]]/, '@brackets'],
+        [/[<>](?!@symbols)/, '@brackets'],
+        [/@symbols/, { cases: { '@operators': 'operator',
+                                '@default'  : '' } } ],
+
+        // @ annotations.
+        // As an example, we emit a debugging log message on these tokens.
+        // Note: message are supressed during the first load -- change some lines to see them.
+        [/@\s*[a-zA-Z_\$][\w\$]*/, { token: 'annotation', log: 'annotation token: $0' }],
+
+        // numbers
+        [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
+        [/0[xX][0-9a-fA-F]+/, 'number.hex'],
+        [/\d+/, 'number'],
+
+        // delimiter: after number because of .\d floats
+        [/[;,.]/, 'delimiter'],
+
+        // strings
+        [/"([^"\\]|\\.)*$/, 'string.invalid' ],  // non-teminated string
+        [/"/,  { token: 'string.quote', bracket: '@open', next: '@string' } ],
+
+        // characters
+        [/'[^\\']'/, 'string'],
+        [/(')(@escapes)(')/, ['string','string.escape','string']],
+        [/'/, 'string.invalid']
+      ],
+
+      comment: [
+        [/[^\/*]+/, 'comment' ],
+        [/\/\*/,    'comment', '@push' ],    // nested comment
+        ["\\*/",    'comment', '@pop'  ],
+        [/[\/*]/,   'comment' ]
+      ],
+
+      string: [
+        [/[^\\"]+/,  'string'],
+        [/@escapes/, 'string.escape'],
+        [/\\./,      'string.escape.invalid'],
+        [/"/,        { token: 'string.quote', bracket: '@close', next: '@pop' } ]
+      ],
+
+      whitespace: [
+        [/[ \t\r\n]+/, 'white'],
+        [/\/\*/,       'comment', '@comment' ],
+        [/\/\/.*$/,    'comment'],
+      ],
+    }
+  }
+})
+
+// And this is how you would load it in the editor:
+
+import {EditorState} from "@codemirror/state"
+import {EditorView, keymap} from "@codemirror/view"
+import {defaultKeymap} from "@codemirror/commands"
+
+const startState = EditorState.create({
+  doc: "Hello World",
+  extensions: [
+    keymap.of(defaultKeymap),
+    myLanguage.load()
+  ]
+})
+
+const view = new EditorView({
+  state: startState,
+  parent: document.body
+})
+
+// Note that `description` is also exported by the creation function.
+// The `description` object is a `LanguageDescription`, which are most commonly used to load nested grammars.
+
+// The `lang-markdown` language supports these, so just to show how that works:
+
+import { markdown } from '@codemirror/lang-markdown'
+
+const myBetterStartState = EditorState.create({
+  doc: "Hello World",
+  extensions: [
+    keymap.of(defaultKeymap),
+    markdown({ codeLanguages: [myLanguage.description] })
+  ]
+})
+
+```
+---
 
 ### Why?
 Monarch uses _regex_, and this particular version of it supports stupidly flexible regex. If you're a regex wizard, you'll like this.
@@ -29,8 +175,9 @@ However, you won't find tokens like this. It's not as simple as `[LezerToken, Le
 
 On a fundamental level, it's fairly simple to get Monarch to output Lezer tokens. This version of Monarch outputs this as its token:
 ```ts
-type MonarchToken = { token: string, start: number, end: number, opens?: string, closes?: string }
-//                                                                 ^ shhhhhhhh war crimes
+type MonarchToken = 
+{ token: string, start: number, end: number, opens?: string, closes?: string }
+//                                              ^ shhhhhhhh war crimes
 ```
 Monarch parses _one line at a time_. The start and end numbers are relative to the start of the line, they're not offsets from the start of the file. Regardless, you can see how the conversion between a `LezerToken` and a `MonarchToken` would be pretty simple if you know the line offsets.
 
