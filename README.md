@@ -15,7 +15,7 @@ If you're wanting to make a language using Monarch, the [official tutorial/playg
 
 To actually, y'know, use it in the code, it looks like this:
 ```ts
-import { createMonarchLanguage } from 'codemirror6-monarch'
+import { createMonarchLanguage } from 'cm6-monarch'
 
 // Just for reference, this is the configuration interface.
 interface MonarchLanguageDefinition {
