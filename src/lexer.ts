@@ -26,6 +26,15 @@ function findBracket(lexer: ILexer, matched: string) {
 
 // -- STACK
 
+
+
+// It's important to know that the `line` mentioned here is an _offset_ from final line the nesting ended on.
+export type MonarchEmbeddedLang = { lang: string, line: number, start: number, end: number }
+export type MonarchStackEmbeddedLang = { lang: string, line: number, start: number }
+
+// '[state].&lng=[lang]&ln=[ln-num]&strt=[offset]'
+const EMBEDDED_LANG_REGEX = /.*?\.&lng=([^&]+?)&ln=([^&]+?)&strt=([^&]+?)$/
+
 /** A mutable, shallow, and copyable `Array<string>` stack. */
 export interface MonarchStack {
   /** The current state of the stack. */
@@ -34,7 +43,15 @@ export interface MonarchStack {
   depth: number
   /** The stack as it was before the current state. */
   parent: MonarchStack
-  /** Returns a clone of the internal stack, which is just an array of strings. */
+  /** The currently embedded language in the stack, if present. */
+  embedded: MonarchStackEmbeddedLang | null
+  /** Embeds information about a nested language into the stack. */
+  embed(lang: string, line: number, start: number): void
+  /** Removes the embedded language from the stack. */
+  popEmbedded(): void
+  /** Adds an offset to the line of the embedded language. */
+  offsetEmbedded(offset: number): void
+  /** Returns a clone of the internal stack as an array of strings. */
   serialize(): string[]
   /** Returns a clone of the stack. */
   clone(): MonarchStack
@@ -48,20 +65,45 @@ export interface MonarchStack {
   popall(): void
 }
 
+// TODO: it's gotten too big and needs to be a class now
+
 /** Creates a new `MonarchStack` object. */
 export function createMonarchStack(start: string[]): MonarchStack {
   let stack: string[] = [...start] // clone
-  const last = () => stack.length - 1
+
+  // deserialize embedded
+  const lst = stack.length - 1
+  let embedded: MonarchStackEmbeddedLang | null = null
+  if (EMBEDDED_LANG_REGEX.test(stack[lst])) {
+    const matches = stack[lst].match(EMBEDDED_LANG_REGEX)
+    if (matches) embedded = { lang: matches[0], line: parseInt(matches[1]), start: parseInt(matches[2]) }
+    stack[lst] = stack[lst].replace(/\.&lng.*$/, '')
+  }
+
   return {
-    get state() { return stack[last()] },
+    get state() { return stack[stack.length - 1] },
     get depth() { return stack.length },
-    get parent() { const parent = [...stack]; parent.pop(); return createMonarchStack(parent) },
-    serialize() { return [...stack] },
-    clone() { return createMonarchStack([...stack]) },
+    get parent() { const parent = this.clone(); parent.pop(); return parent },
+    clone() { return createMonarchStack([...this.serialize()]) },
     push(state: string) { stack.push(state) },
-    switchTo(state: string) { stack[last()] = state },
+    switchTo(state: string) { stack[stack.length - 1] = state },
     pop() { stack.pop() },
-    popall() { stack = [stack.shift() ?? 'root'] }
+    popall() { stack = [stack.shift() ?? 'root'] },
+    // embedded shenanigans
+    get embedded() {
+      // returns a clone
+      return embedded ? { lang: embedded.lang, line: embedded.line, start: embedded.start } : null
+    },
+    embed(lang: string, line: number, start: number) { embedded = { lang, line, start } },
+    popEmbedded() { embedded = null },
+    offsetEmbedded(offset: number) { if (embedded) embedded.line += offset },
+    // serializing
+    serialize() {
+      const embeddedStr = embedded ? `.&lng=${embedded.lang}&ln=${embedded.line}&strt=${embedded.start}` : ''
+      const copyStack = [...stack]
+      copyStack[copyStack.length - 1] += embeddedStr
+      return copyStack
+    }
   }
 }
 
@@ -110,6 +152,10 @@ export function tokenize(opts: TokenizeOpts) {
   const lineLength = line.length
   const stack = opts.stack
   const lexer = opts.lexer
+
+  let isEmbedded = stack.embedded ? true : false
+  let poppedEmbedded: MonarchEmbeddedLang[] = []
+  if (isEmbedded) stack.offsetEmbedded(1)
 
   let pos = opts.offset ?? 0
 
@@ -213,10 +259,31 @@ export function tokenize(opts: TokenizeOpts) {
 
       // state transformations
 
+      if (action.nextEmbedded) {
+        if (action.nextEmbedded === '@pop') {
+          if (!isEmbedded) throw createError(lexer,
+            'attempted to pop nested stack while not nesting any language in rule: ' + safeRuleName(rule))
+          else {
+            poppedEmbedded.push({ ...stack.embedded!, end: pos - matched.length })
+            stack.popEmbedded()
+            isEmbedded = false
+          }
+        }
+        else {
+          if (isEmbedded) throw createError(lexer,
+            'attempted to nest more than one language in rule: ' + safeRuleName(rule))
+          else {
+            const embedded = substituteMatches(lexer, action.nextEmbedded, matched, matches, state)
+            stack.embed(embedded, 0, result === '@rematch' ? pos - matched.length : pos)
+            isEmbedded = true
+          }
+        }
+      }
+
       // back up the stream..
       if (action.goBack) pos = Math.max(0, pos - action.goBack)
 
-      if (action.switchTo && typeof action.switchTo === 'string') {
+      if (action.switchTo) {
         // switch state without a push...
         let nextState = substituteMatches(lexer, action.switchTo, matched, matches, state)
         if (nextState[0] === '@') nextState = nextState.substr(1) // peel off starting '@'
@@ -226,7 +293,7 @@ export function tokenize(opts: TokenizeOpts) {
         else stack.switchTo(nextState)
       }
 
-      else if (action.transform && typeof action.transform === 'function')
+      else if (action.transform)
         throw createError(lexer, 'action.transform not supported')
 
       else if (action.next) {
@@ -253,7 +320,7 @@ export function tokenize(opts: TokenizeOpts) {
         }
       }
 
-      if (action.log && typeof (action.log) === 'string')
+      if (action.log)
         log(lexer, lexer.languageId + ': ' + substituteMatches(lexer, action.log, matched, matches, state))
     }
 
@@ -346,5 +413,5 @@ export function tokenize(opts: TokenizeOpts) {
     }
     last = { stack: stack.serialize(), token: tokens[tokens.length - 1] }
   }
-  return { stack, tokens }
+  return { stack, tokens, poppedEmbedded }
 }

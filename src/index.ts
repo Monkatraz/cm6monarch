@@ -3,13 +3,14 @@ import { Language, LanguageSupport, languageDataProp, defineLanguageFacet, Langu
 import { Tag, tags, styleTags } from "@codemirror/highlight"
 
 import { compile } from './monarch/monarchCompile'
-import { createMonarchStack, MonarchStack, MonarchToken, stackIsEqual, tokenize } from './lexer'
+import { createMonarchStack, stackIsEqual, tokenize } from './lexer'
 
 import type { Input } from 'lezer'
 import type { PartialParse } from 'lezer-tree'
 import type { Extension } from '@codemirror/state'
 import type { EditorParseContext } from '@codemirror/language'
-import type { IMonarchLanguage, ILexer, IMonarchParserAction } from './monarch/monarchCommon'
+import type { MonarchStack, MonarchToken, MonarchEmbeddedLang } from './lexer'
+import type { IMonarchLanguage, ILexer } from './monarch/monarchCommon'
 
 type TagList = { [name: string]: Tag }
 
@@ -178,6 +179,7 @@ class MonarchLine {
   startStack!: string[]
   endStack!: string[]
   tokens!: MappedToken[]
+  embeds!: MonarchEmbeddedLang[]
   lastOffset!: number
   lastBuffer!: MappedToken[]
 
@@ -212,6 +214,7 @@ class MonarchLine {
     // tokenize
     const result = tokenize({ line, lexer: this.state.lexer, stack })
     this.tokens = result.tokens.map((token) => compileMappedToken(token, this.state.nodeMap))
+    this.embeds = result.poppedEmbedded
     this.endStack = stack.serialize()
   }
 
@@ -328,7 +331,7 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
     })
     // console.log(
     //   'start (ch): ' + start + ' | ' + 'ended (line): ' + idxLine + ' | ' + (buffer.length / 4) + ' tokens')
-    return tree.balance()
+    return tree
   }
 
   return {
@@ -337,10 +340,13 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
     // the advancing is controlled entirely by codemirror's scheduler
     advance() {
       const line = docLines[idxLine]
-      const cachedLine = state.lines[idxLine]
+      let cachedLine = state.lines[idxLine]
       let lineUpdated = true
       if (cachedLine) lineUpdated = cachedLine.eval(line)
-      else state.lines[idxLine] = new MonarchLine(state, idxLine, line)
+      else {
+        state.lines[idxLine] = new MonarchLine(state, idxLine, line)
+        cachedLine = state.lines[idxLine]
+      }
 
       idxLine++
 
