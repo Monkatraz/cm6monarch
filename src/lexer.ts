@@ -153,7 +153,7 @@ export function tokenize(opts: TokenizeOpts) {
   const stack = opts.stack
   const lexer = opts.lexer
 
-  let isEmbedded = stack.embedded ? true : false
+  let isEmbedded = stack.embedded !== null ? true : false
   let poppedEmbedded: MonarchEmbeddedLang[] = []
   if (isEmbedded) stack.offsetEmbedded(1)
 
@@ -183,6 +183,8 @@ export function tokenize(opts: TokenizeOpts) {
     let matched: string = ''
     let action: FuzzyAction | FuzzyAction[] | null = null
     let rule: IRule | null = null
+
+    isEmbedded = stack.embedded !== null ? true : false
 
     // check if we need to process group matches first
     if (groupMatching) {
@@ -274,8 +276,14 @@ export function tokenize(opts: TokenizeOpts) {
             'attempted to nest more than one language in rule: ' + safeRuleName(rule))
           else {
             const embedded = substituteMatches(lexer, action.nextEmbedded, matched, matches, state)
-            stack.embed(embedded, 0, result === '@rematch' ? pos - matched.length : pos)
-            isEmbedded = true
+            const start = action.token === '@rematch' ? pos - matched.length : pos
+            stack.embed(embedded, 0, start)
+            // we need to push a special token so that we can find our nesting node in the token stream
+            tokens.push({
+              type: '_NEST_',
+              start: start,
+              end: start
+            })
           }
         }
       }
@@ -366,7 +374,7 @@ export function tokenize(opts: TokenizeOpts) {
         matches = ['']
         result = ''
         // rematch but the token still needs to signal the parser
-        if (action && typeof action !== 'string' && action.parser)
+        if (!isEmbedded && action && typeof action !== 'string' && action.parser)
           tokens.push({ type: '', start: pos0, end: pos, parser: action.parser })
       }
 
@@ -378,38 +386,39 @@ export function tokenize(opts: TokenizeOpts) {
           'no progress in tokenizer in rule: ' + safeRuleName(rule))
       }
 
-      // return the result (and check for brace matching)
-      let tokenType: string | null = null
-      if (isString(result) && result.indexOf('@brackets') === 0) {
-        let rest = result.substr(9) // 9 = '@brackets`.length
-        let bracket = findBracket(lexer, matched)
+      if (!isEmbedded) {
+        // return the result (and check for brace matching)
+        let tokenType: string | null = null
+        if (isString(result) && result.indexOf('@brackets') === 0) {
+          let rest = result.substr(9) // 9 = '@brackets`.length
+          let bracket = findBracket(lexer, matched)
 
-        if (!bracket) throw createError(lexer,
-          '@brackets token returned but no bracket defined as: ' + matched)
+          if (!bracket) throw createError(lexer,
+            '@brackets token returned but no bracket defined as: ' + matched)
 
-        tokenType = sanitize(bracket.token + rest)
+          tokenType = sanitize(bracket.token + rest)
+        }
+        else tokenType = sanitize(result === '' ? '' : result.toString())
+
+        if (!tokenType.startsWith('@')) {
+          // checking if we can merge this token with the last one
+          // it's a lot of checks
+          if (
+            !(typeof action !== 'string' && 'parser' in action) &&
+            last && last.token &&
+            !last.token.parser &&
+            last.token.type === tokenType &&
+            last.token.end === pos0 &&
+            stackIsEqual(last.stack, stack)
+          ) {
+            tokens[tokens.length - 1].end = pos
+          } else
+            tokens.push({
+              type: tokenType, start: pos0, end: pos,
+              parser: typeof action !== 'string' ? action.parser : undefined
+            })
+        }
       }
-      else tokenType = sanitize(result === '' ? '' : result.toString())
-
-      if (!tokenType.startsWith('@')) {
-        // checking if we can merge this token with the last one
-        // it's a lot of checks
-        if (
-          !(typeof action !== 'string' && 'parser' in action) &&
-          last && last.token &&
-          !last.token.parser &&
-          last.token.type === tokenType &&
-          last.token.end === pos0 &&
-          stackIsEqual(last.stack, stack)
-        ) {
-          tokens[tokens.length - 1].end = pos
-        } else
-          tokens.push({
-            type: tokenType, start: pos0, end: pos,
-            parser: typeof action !== 'string' ? action.parser : undefined
-          })
-      }
-
     }
     last = { stack: stack.serialize(), token: tokens[tokens.length - 1] }
   }

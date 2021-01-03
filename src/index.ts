@@ -17,6 +17,7 @@ type TagList = { [name: string]: Tag }
 export interface MonarchLanguageDefinition {
   name: string
   lexer: IMonarchLanguage
+  nestLanguages?: LanguageDescription[]
   configure?: MonarchConfigure
   alias?: string[]
   ext?: string[]
@@ -38,7 +39,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
     opts.alias ? { alias: opts.alias } : {},
     opts.ext ? { extensions: opts.ext } : {}
   )
-  const langData = { ...langDesc, ...(opts.languageData ? opts.languageData : {}) }
+  const langData = { ...langDesc, ...(opts.languageData ?? {}) }
   const lexer = compile(opts.lexer)
 
   // export tags
@@ -48,7 +49,8 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 
   const props = () => {
     const dataFacet = defineLanguageFacet(langData)
-    const parser = createMonarchState({ lexer, configure: opts.configure ?? {}, tags: newTags, dataFacet })
+    const parser = createMonarchState(
+      { lexer, configure: opts.configure ?? {}, tags: newTags, dataFacet, nestLanguages: opts.nestLanguages ?? [] })
     const startParse = (input: Input, startPos: number, context: EditorParseContext) => {
       return monarchParse(parser, input, startPos, context)
     }
@@ -57,7 +59,8 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 
   const load = function () {
     const dataFacet = defineLanguageFacet(langData)
-    const parser = createMonarchState({ lexer, configure: opts.configure ?? {}, tags: newTags, dataFacet })
+    const parser = createMonarchState(
+      { lexer, configure: opts.configure ?? {}, tags: newTags, dataFacet, nestLanguages: opts.nestLanguages ?? [] })
     const startParse = (input: Input, startPos: number, context: EditorParseContext) => {
       return monarchParse(parser, input, startPos, context)
     }
@@ -77,6 +80,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // TODO: embedded languages
 // TODO: use monarch's brace handling automatically and get brace info into nodes
 // TODO: allow 'emphasis.slash' where the '.slash' makes the 'emphasis' more specific, but uses the same scope
+// TODO: use the tree fragments to get the exact edited text positions (relatively close, anyways)
 
 // ? inspect tokens widgets? pls cm6 add it urself
 
@@ -104,6 +108,8 @@ interface MonarchState {
   nodeSet: NodeSet
   /** The parser's cache of lines / data buffer. */
   lines: MonarchLine[]
+  /** The list of languages available for nesting. */
+  nestLanguages: LanguageDescription[]
 }
 
 interface MonarchStateOpts {
@@ -111,10 +117,12 @@ interface MonarchStateOpts {
   configure: MonarchConfigure
   tags: TagList
   dataFacet: ReturnType<typeof defineLanguageFacet>
+  nestLanguages: LanguageDescription[]
 }
 
 /** Creates a `MonarchState`. I know, boring - see the `MonarchState` interface. */
-function createMonarchState({ lexer, configure, tags: newTags, dataFacet }: MonarchStateOpts): MonarchState {
+function createMonarchState(
+  { lexer, configure, tags: newTags, dataFacet, nestLanguages }: MonarchStateOpts): MonarchState {
 
   const allTags: TagList = { ...tags as any, ...newTags }
   const nodeMap: Map<string, number> = new Map
@@ -141,7 +149,8 @@ function createMonarchState({ lexer, configure, tags: newTags, dataFacet }: Mona
     nodeMap,
     nodeTypes,
     nodeSet,
-    lines
+    lines,
+    nestLanguages
   }
 }
 
@@ -162,8 +171,11 @@ function compileMappedToken(token: MonarchToken, map: Map<string, number>): Mapp
     if ('end' in token.parser)
       parserCloseAction = [map.get(token.parser.end!)!, 1]
   }
+  let tokenType = 0
+  if (token.type === '_NEST_') tokenType = -1
+  else if (token.type) tokenType = map.get(token.type)!
   return [
-    token.type ? map.get(token.type)! : 0,
+    tokenType,
     token.start,
     token.end,
     parserOpenAction,
@@ -283,36 +295,42 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
 
     // here we're going to process `opens` and `closes` data and make an actually nesting tree
     let stack: [name: number, start: number, children: number][] = []
+    const increment = () => stack.forEach(state => state[2]++)
     const buffer: number[] = []
     for (const token of tokens) {
-      // order must be [closes -> token -> opens]
-      // closing
-      let closed = 0
-      if (token[4] && stack.length) {
-        const idx = stack.map(state => state[0]).lastIndexOf(token[4][0])
-        if (idx !== -1) {
-          // cuts off anything past our closing stack element
-          stack = stack.slice(0, idx + 1)
-          // if we're inclusive of the end token we need to include it before we end the state
-          if (token[0] && token[4][1]) {
-            buffer.push(token[0], token[1], token[2], 4)
-            stack.forEach(state => state[2]++)
+      // nesting lang handling
+      if (token[0] === -1) {
+        buffer.push(0, token[1], token[2], -1)
+        increment()
+      } else {
+        // order must be [closes -> token -> opens]
+        // closing
+        let closed = 0
+        if (token[4] && stack.length) {
+          const idx = stack.map(state => state[0]).lastIndexOf(token[4][0])
+          if (idx !== -1) {
+            // cuts off anything past our closing stack element
+            stack = stack.slice(0, idx + 1)
+            // if we're inclusive of the end token we need to include it before we end the state
+            if (token[0] && token[4][1]) {
+              buffer.push(token[0], token[1], token[2], 4)
+              increment()
+            }
+            const state = stack.pop()!
+            buffer.push(state[0], state[1], token[4][1] ? token[2] : token[1], (state[2] * 4) + 4)
+            increment()
+            closed = 1
           }
-          const state = stack.pop()!
-          buffer.push(state[0], state[1], token[4][1] ? token[2] : token[1], (state[2] * 4) + 4)
-          stack.forEach(state => state[2]++)
-          closed = 1
         }
-      }
-      // actual token itself
-      if (token[0] && !(token[4] && token[4][1])) {
-        buffer.push(token[0], token[1], token[2], 4)
-        stack.forEach(state => state[2]++)
-      }
-      // opening
-      if (token[3] && (!token[4] || (token[3][0] !== token[4][0] || (token[3][0] === token[4][0] && !closed)))) {
-        //stack.forEach(state => state[2]++)
-        stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[0] && token[3][1] ? 1 : 0])
+        // actual token itself
+        if (token[0] && !(token[4] && token[4][1])) {
+          buffer.push(token[0], token[1], token[2], 4)
+          increment()
+        }
+        // opening
+        if (token[3] && (!token[4] || (token[3][0] !== token[4][0] || (token[3][0] === token[4][0] && !closed)))) {
+          stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[0] && token[3][1] ? 1 : 0])
+        }
       }
     }
     // handle unfinished stack
@@ -327,6 +345,7 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
       buffer: buffer,
       length: pos(),
       topID: 0,
+      reused: [Tree.empty],
       nodeSet: state.nodeSet
     })
     // console.log(
