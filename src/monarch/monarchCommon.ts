@@ -70,6 +70,9 @@ export type IMonarchLanguageRule = IShortMonarchLanguageRule1
 	| IShortMonarchLanguageRule2
 	| IExpandedMonarchLanguageRule
 
+
+export type IMonarchParserAction = { open?: string, close?: string } | { start?: string, end?: string }
+
 /**
  * An action is either an array of actions...
  * ... or a case statement with guards...
@@ -84,10 +87,10 @@ export interface IExpandedMonarchLanguageAction {
 	cases?: Object
 	/** token class (ie. css class) (or "@brackets" or "@rematch") */
 	token?: string
+	/** Directs how the parser will nest your tokens. */
+	parser?: IMonarchParserAction
 	/** the next state to push, or "@push", "@pop", "@popall" */
 	next?: string
-	opens?: string
-	closes?: string
 	/** switch to this state */
 	switchTo?: string
 	/** go back n characters in the stream */
@@ -200,8 +203,7 @@ export interface IAction {
 	goBack?: number
 	transform?: (states: string[]) => string[]
 
-	opens?: string
-	closes?: string
+	parser?: IMonarchParserAction
 }
 
 export interface IBranch {

@@ -9,7 +9,7 @@ import type { Input } from 'lezer'
 import type { PartialParse } from 'lezer-tree'
 import type { Extension } from '@codemirror/state'
 import type { EditorParseContext } from '@codemirror/language'
-import type { IMonarchLanguage, ILexer } from './monarch/monarchCommon'
+import type { IMonarchLanguage, ILexer, IMonarchParserAction } from './monarch/monarchCommon'
 
 type TagList = { [name: string]: Tag }
 
@@ -144,15 +144,29 @@ function createMonarchState({ lexer, configure, tags: newTags, dataFacet }: Mona
   }
 }
 
-type MappedToken = [type: number, start: number, end: number, opens: number, closes: number]
+type MappedParserAction = [id: number, inclusive: number]
+
+type MappedToken = [type: number, start: number, end: number, open?: MappedParserAction, close?: MappedParserAction]
 
 function compileMappedToken(token: MonarchToken, map: Map<string, number>): MappedToken {
+  let parserOpenAction: MappedParserAction | undefined
+  let parserCloseAction: MappedParserAction | undefined
+  if (token.parser) {
+    if ('open' in token.parser)
+      parserOpenAction = [map.get(token.parser.open!)!, 0]
+    if ('close' in token.parser)
+      parserCloseAction = [map.get(token.parser.close!)!, 0]
+    if ('start' in token.parser)
+      parserOpenAction = [map.get(token.parser.start!)!, 1]
+    if ('end' in token.parser)
+      parserCloseAction = [map.get(token.parser.end!)!, 1]
+  }
   return [
     map.get(token.type)!,
     token.start,
     token.end,
-    token.opens ? map.get(token.opens)! : 0,
-    token.closes ? map.get(token.closes)! : 0
+    parserOpenAction,
+    parserCloseAction
   ]
 }
 
@@ -272,12 +286,12 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
       // closing
       let closed = 0
       if (token[4] && stack.length) {
-        const idx = stack.map(state => state[0]).lastIndexOf(token[4])
+        const idx = stack.map(state => state[0]).lastIndexOf(token[4][0])
         if (idx !== -1) {
           // cuts off anything past our closing stack element
           stack = stack.slice(0, idx + 1)
           const state = stack.pop()!
-          buffer.push(state[0], state[1], token[1], (state[2] * 4) + 4)
+          buffer.push(state[0], state[1], token[4][1] ? token[2] : token[1], (state[2] * 4) + 4)
           stack.forEach(state => state[2]++)
           closed = 1
         }
@@ -286,16 +300,16 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
       buffer.push(token[0], token[1], token[2], 4)
       stack.forEach(state => state[2]++)
       // opening
-      if (token[3] && (token[3] !== token[4] || (token[3] === token[4] && !closed))) {
-        stack.forEach(state => state[2]++) // needs to go first
-        stack.push([token[3], token[2], 0])
+      if (token[3] && (!token[4] || (token[3][0] !== token[4][0] || (token[3][0] === token[4][0] && !closed)))) {
+        stack.forEach(state => state[2]++)
+        stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[3][1] ? 1 : 0])
       }
     }
     // handle unfinished stack
     while (stack.length) {
       const state = stack.pop()!
       buffer.push(state[0], state[1], pos(), (state[2] * 4) + 4)
-      stack.forEach(state => state[2]++) // needs to go first
+      stack.forEach(state => state[2]++)
     }
 
     // compile our huge ass tree

@@ -290,11 +290,8 @@ function compileAction(lexer: ILexerMin, ruleName: string, action: any): FuzzyAc
 			if (typeof (action.nextEmbedded) === 'string') {
 				newAction.nextEmbedded = action.nextEmbedded
 			}
-			if (typeof (action.opens) === 'string') {
-				newAction.opens = action.opens
-			}
-			if (typeof (action.closes) === 'string') {
-				newAction.closes = action.closes
+			if ('parser' in action) {
+				newAction.parser = action.parser
 			}
 			return newAction
 		}
@@ -380,19 +377,20 @@ class Rule implements IRule {
 	public setAction(lexer: ILexerMin, act: IAction, tokenTypes: Set<string>) {
 		this.action = compileAction(lexer, this.name, act)
 		// every action runs through here, so we can get our token set this way
-		if (typeof this.action === 'object' && 'group' in this.action) {
-			this.action.group!.forEach((act) => {
-				const token = typeof act === 'string' ? act : act?.token ?? ''
-				if (token && !token.startsWith('@')) tokenTypes.add(token)
-				if (!(typeof act === 'string') && act.opens) tokenTypes.add(act.opens)
-				if (!(typeof act === 'string') && act.closes) tokenTypes.add(act.closes)
-			})
-		} else {
-			const token = typeof this.action === 'string' ? this.action : this.action?.token ?? ''
-			if (token && !token.startsWith('@')) tokenTypes.add(token)
-			if (!(typeof act === 'string') && act.opens) tokenTypes.add(act.opens)
-			if (!(typeof act === 'string') && act.closes) tokenTypes.add(act.closes)
-		}
+		if (typeof this.action === 'object' && 'group' in this.action)
+			this.action.group!.forEach(act => addTokens(act, tokenTypes))
+		else addTokens(this.action, tokenTypes)
+	}
+}
+
+function addTokens(act: FuzzyAction, set: Set<string>) {
+	const token = typeof act === 'string' ? act : act?.token ?? ''
+	if (token && !token.startsWith('@')) set.add(token)
+	if (typeof act !== 'string' && act.parser) {
+		if ('open' in act.parser) set.add(act.parser.open!)
+		if ('close' in act.parser) set.add(act.parser.close!)
+		if ('start' in act.parser) set.add(act.parser.start!)
+		if ('end' in act.parser) set.add(act.parser.end!)
 	}
 }
 

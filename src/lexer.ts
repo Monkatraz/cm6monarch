@@ -1,4 +1,4 @@
-import { fixCase, MonarchBracket, findRules, createError, isFuzzyAction, isIAction, substituteMatches, log, isString, sanitize } from './monarch/monarchCommon'
+import { fixCase, MonarchBracket, findRules, createError, isFuzzyAction, isIAction, substituteMatches, log, isString, sanitize, IMonarchParserAction } from './monarch/monarchCommon'
 import type { IRule, ILexer, FuzzyAction } from './monarch/monarchCommon'
 
 // -- UTIL. FUNCTIONS
@@ -87,8 +87,7 @@ export interface MonarchToken {
   /** The position of the end of the token, relative to the line it's on. */
   end: number
 
-  opens: string | false
-  closes: string | false
+  parser?: IMonarchParserAction
 }
 
 export interface TokenizeOpts {
@@ -322,25 +321,23 @@ export function tokenize(opts: TokenizeOpts) {
       }
       else tokenType = sanitize(result === '' ? '' : result.toString())
 
-      let opens: string | false = false
-      let closes: string | false = false
-      if (typeof action !== 'string' && 'opens' in action) opens = action.opens ?? false
-      if (typeof action !== 'string' && 'closes' in action) closes = action.closes ?? false
-
       if (!tokenType.startsWith('@')) {
         // checking if we can merge this token with the last one
         // it's a lot of checks
         if (
-          !opens && !closes &&
+          !(typeof action !== 'string' && 'parser' in action) &&
           last && last.token &&
-          !last.token.opens && !last.token.closes &&
+          !last.token.parser &&
           last.token.type === tokenType &&
           last.token.end === pos0 &&
           stackIsEqual(last.stack, stack)
         ) {
           tokens[tokens.length - 1].end = pos
         } else
-          tokens.push({ type: tokenType, start: pos0, end: pos, opens, closes })
+          tokens.push({
+            type: tokenType, start: pos0, end: pos,
+            parser: typeof action !== 'string' ? action.parser : undefined
+          })
       }
 
     }
