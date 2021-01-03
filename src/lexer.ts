@@ -298,6 +298,9 @@ export function tokenize(opts: TokenizeOpts) {
         matched = ''
         matches = ['']
         result = ''
+        // rematch but the token still needs to signal the parser
+        if (action && typeof action !== 'string' && action.parser)
+          tokens.push({ type: '', start: pos0, end: pos, parser: action.parser })
       }
 
       // check progress

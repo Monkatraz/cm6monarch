@@ -43,7 +43,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
   // export tags
   const newTags: TagList = {}
   const unknownTags = Array.from(lexer.tokenTypes).filter(tag => !(tag in tags))
-  unknownTags.forEach(tagName => newTags[tagName] = Tag.define())
+  unknownTags.forEach(tagName => { if (tagName) newTags[tagName] = Tag.define() })
 
   const props = () => {
     const dataFacet = defineLanguageFacet(langData)
@@ -162,7 +162,7 @@ function compileMappedToken(token: MonarchToken, map: Map<string, number>): Mapp
       parserCloseAction = [map.get(token.parser.end!)!, 1]
   }
   return [
-    map.get(token.type)!,
+    token.type ? map.get(token.type)! : 0,
     token.start,
     token.end,
     parserOpenAction,
@@ -290,6 +290,11 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
         if (idx !== -1) {
           // cuts off anything past our closing stack element
           stack = stack.slice(0, idx + 1)
+          // if we're inclusive of the end token we need to include it before we end the state
+          if (token[0] && token[4][1]) {
+            buffer.push(token[0], token[1], token[2], 4)
+            stack.forEach(state => state[2]++)
+          }
           const state = stack.pop()!
           buffer.push(state[0], state[1], token[4][1] ? token[2] : token[1], (state[2] * 4) + 4)
           stack.forEach(state => state[2]++)
@@ -297,12 +302,14 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
         }
       }
       // actual token itself
-      buffer.push(token[0], token[1], token[2], 4)
-      stack.forEach(state => state[2]++)
+      if (token[0] && !(token[4] && token[4][1])) {
+        buffer.push(token[0], token[1], token[2], 4)
+        stack.forEach(state => state[2]++)
+      }
       // opening
       if (token[3] && (!token[4] || (token[3][0] !== token[4][0] || (token[3][0] === token[4][0] && !closed)))) {
-        stack.forEach(state => state[2]++)
-        stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[3][1] ? 1 : 0])
+        //stack.forEach(state => state[2]++)
+        stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[0] && token[3][1] ? 1 : 0])
       }
     }
     // handle unfinished stack
