@@ -1,14 +1,14 @@
-import { NodeSet, NodeType, Tree } from 'lezer-tree'
-import { Language, LanguageSupport, languageDataProp, defineLanguageFacet, LanguageDescription } from '@codemirror/next/language'
-import { Tag, tags, styleTags } from "@codemirror/next/highlight"
+import { NodePropSource, NodeSet, NodeType, Tree } from 'lezer-tree'
+import { Language, LanguageSupport, languageDataProp, defineLanguageFacet, LanguageDescription } from '@codemirror/language'
+import { Tag, tags, styleTags } from "@codemirror/highlight"
 
 import { compile } from './monarch/monarchCompile.js'
 import { createMonarchStack, MonarchStack, MonarchToken, stackIsEqual, tokenize } from './lexer.js'
 
 import type { Input } from 'lezer'
 import type { PartialParse } from 'lezer-tree'
-import type { Extension } from '@codemirror/next/state'
-import type { EditorParseContext } from '@codemirror/next/language'
+import type { Extension } from '@codemirror/state'
+import type { EditorParseContext } from '@codemirror/language'
 import type { IMonarchLanguage, ILexer } from './monarch/monarchCommon'
 
 type TagList = { [name: string]: Tag }
@@ -16,6 +16,7 @@ type TagList = { [name: string]: Tag }
 export interface MonarchLanguageDefinition {
   name: string
   lexer: IMonarchLanguage
+  configure?: MonarchConfigure
   alias?: string[]
   ext?: string[]
   languageData?: { [name: string]: any }
@@ -46,7 +47,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 
   const props = () => {
     const dataFacet = defineLanguageFacet(langData)
-    const parser = createMonarchState(lexer, newTags, dataFacet)
+    const parser = createMonarchState({ lexer, configure: opts.configure ?? {}, tags: newTags, dataFacet })
     const startParse = (input: Input, startPos: number, context: EditorParseContext) => {
       return monarchParse(parser, input, startPos, context)
     }
@@ -55,7 +56,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 
   const load = function () {
     const dataFacet = defineLanguageFacet(langData)
-    const parser = createMonarchState(lexer, newTags, dataFacet)
+    const parser = createMonarchState({ lexer, configure: opts.configure ?? {}, tags: newTags, dataFacet })
     const startParse = (input: Input, startPos: number, context: EditorParseContext) => {
       return monarchParse(parser, input, startPos, context)
     }
@@ -74,8 +75,6 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // TODO: potentially find a way of line shifting (if new line, check next line for the string)
 // TODO: embedded languages
 // TODO: use monarch's brace handling automatically and get brace info into nodes
-// TODO: add a 'configure()' field that works like a lezer parser
-// TODO: add an 'inline' only mode for `opens` `closes`
 // TODO: allow 'emphasis.slash' where the '.slash' makes the 'emphasis' more specific, but uses the same scope
 
 // ? inspect tokens widgets? pls cm6 add it urself
@@ -86,6 +85,10 @@ function quickHash(s: string) {
   for (const c of s)
     h = Math.imul(31, h) + c.charCodeAt(0) | 0
   return h
+}
+
+export interface MonarchConfigure {
+  props?: NodePropSource[]
 }
 
 /** Represents the state of a Monarch incremental parser. */
@@ -102,13 +105,20 @@ interface MonarchState {
   lines: MonarchLine[]
 }
 
+interface MonarchStateOpts {
+  lexer: ILexer
+  configure: MonarchConfigure
+  tags: TagList
+  dataFacet: ReturnType<typeof defineLanguageFacet>
+}
+
 /** Creates a `MonarchState`. I know, boring - see the `MonarchState` interface. */
-function createMonarchState(lexer: ILexer, newTags: TagList, dataFacet: any): MonarchState {
+function createMonarchState({ lexer, configure, tags: newTags, dataFacet }: MonarchStateOpts): MonarchState {
 
   const allTags: TagList = { ...tags as any, ...newTags }
   const nodeMap: Map<string, number> = new Map
-  const nodeTypes: NodeType[] = []
-  const nodeSet = new NodeSet(nodeTypes)
+  let nodeTypes: NodeType[] = []
+  let nodeSet = new NodeSet(nodeTypes)
   const lines: MonarchLine[] = []
 
   nodeMap.set('document', 0)
@@ -116,14 +126,14 @@ function createMonarchState(lexer: ILexer, newTags: TagList, dataFacet: any): Mo
   lexer.tokenTypes.forEach((name) => {
     const id = nodeMap.size
     nodeMap.set(name, id)
-    nodeTypes.push(NodeType.define({
-      name,
-      id,
-      // this weird trick potentially makes highlighting more reliable
-      // if the user modifies the tags list before or after this state is made, this will catch it
-      props: [styleTags({ get [name + '/...']() { return allTags[name] ?? tags.literal } })]
-    }))
+    let props: NodePropSource[] = []
+    // check if it should be styled as a tag (lower case)
+    if (name[0].toUpperCase() !== name[0])
+      props.push(styleTags({ get [name + '/...']() { return allTags[name] ?? NodeType.none } }))
+    nodeTypes.push(NodeType.define({ name, id, props }))
   })
+
+  if ('props' in configure) nodeSet = nodeSet.extend(...configure.props!)
 
   return {
     lexer,
@@ -282,9 +292,11 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
       }
     }
     // handle unfinished stack
-    // if (stack.length) stack.forEach(state => {
-    //   buffer.push(state[0], state[1], pos(), (state[2] * 4) + 4)
-    // })
+    while (stack.length) {
+      const state = stack.pop()!
+      buffer.push(state[0], state[1], pos(), (state[2] * 4) + 4)
+      stack.forEach(state => state[2]++) // needs to go first
+    }
 
     // compile our huge ass tree
     const tree = Tree.build({
@@ -295,7 +307,7 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
     })
     // console.log(
     //   'start (ch): ' + start + ' | ' + 'ended (line): ' + idxLine + ' | ' + (buffer.length / 4) + ' tokens')
-    return tree
+    return tree.balance()
   }
 
   return {

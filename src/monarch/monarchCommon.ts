@@ -78,41 +78,25 @@ export type IMonarchLanguageRule = IShortMonarchLanguageRule1
 export type IShortMonarchLanguageAction = string
 
 export interface IExpandedMonarchLanguageAction {
-	/**
-	 * array of actions for each parenthesized match group
-	 */
+	/** array of actions for each parenthesized match group */
 	group?: IMonarchLanguageAction[]
-	/**
-	 * map from string to ILanguageAction
-	 */
+	/** map from string to ILanguageAction */
 	cases?: Object
-	/**
-	 * token class (ie. css class) (or "@brackets" or "@rematch")
-	 */
+	/** token class (ie. css class) (or "@brackets" or "@rematch") */
 	token?: string
-	/**
-	 * the next state to push, or "@push", "@pop", "@popall"
-	 */
+	/** the next state to push, or "@push", "@pop", "@popall" */
 	next?: string
-	/**
-	 * switch to this state
-	 */
+	opens?: string
+	closes?: string
+	/** switch to this state */
 	switchTo?: string
-	/**
-	 * go back n characters in the stream
-	 */
+	/** go back n characters in the stream */
 	goBack?: number
-	/**
-	 * @open or @close
-	 */
+	/** @open or @close */
 	bracket?: string
-	/**
-	 * switch to embedded language (using the mimetype) or get out using "@pop"
-	 */
+	/** switch to embedded language (using the mimetype) or get out using "@pop" */
 	nextEmbedded?: string
-	/**
-	 * log a message to the browser console window
-	 */
+	/** log a message to the browser console window */
 	log?: string
 }
 
