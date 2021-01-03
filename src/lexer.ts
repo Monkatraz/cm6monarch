@@ -1,4 +1,4 @@
-import { fixCase, MonarchBracket, findRules, createError, isFuzzyAction, isIAction, substituteMatches, log, isString, sanitize } from './monarch/monarchCommon.js'
+import { fixCase, MonarchBracket, findRules, createError, isFuzzyAction, isIAction, substituteMatches, log, isString, sanitize } from './monarch/monarchCommon'
 import type { IRule, ILexer, FuzzyAction } from './monarch/monarchCommon'
 
 // -- UTIL. FUNCTIONS

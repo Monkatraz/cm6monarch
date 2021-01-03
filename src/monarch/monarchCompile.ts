@@ -8,7 +8,7 @@
  * into a typed and checked ILexer definition.
  */
 
-import { IMonarchLanguage, IMonarchLanguageBracket, createError, empty, substituteMatches, fixCase, MonarchBracket, stateExists, IRule, ILexerMin, FuzzyAction, IBranch, IAction, ILexer } from './monarchCommon.js'
+import { IMonarchLanguage, IMonarchLanguageBracket, createError, empty, substituteMatches, fixCase, MonarchBracket, stateExists, IRule, ILexerMin, FuzzyAction, IBranch, IAction, ILexer } from './monarchCommon'
 
 /*
  * Type helpers

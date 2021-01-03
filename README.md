@@ -21,6 +21,9 @@ import { createMonarchLanguage } from 'cm6-monarch'
 interface MonarchLanguageDefinition {
   name: string
   lexer: IMonarchLanguage
+  configure?: {
+    props?: NodePropSource[]
+  }
   alias?: string[]
   ext?: string[]
   languageData?: { [name: string]: any }
@@ -146,6 +149,7 @@ const myBetterStartState = EditorState.create({
   doc: "Hello World",
   extensions: [
     keymap.of(defaultKeymap),
+    defaultHighlightStyle,
     markdown({ codeLanguages: [myLanguage.description] })
   ]
 })

@@ -2,8 +2,8 @@ import { NodePropSource, NodeSet, NodeType, Tree } from 'lezer-tree'
 import { Language, LanguageSupport, languageDataProp, defineLanguageFacet, LanguageDescription } from '@codemirror/language'
 import { Tag, tags, styleTags } from "@codemirror/highlight"
 
-import { compile } from './monarch/monarchCompile.js'
-import { createMonarchStack, MonarchStack, MonarchToken, stackIsEqual, tokenize } from './lexer.js'
+import { compile } from './monarch/monarchCompile'
+import { createMonarchStack, MonarchStack, MonarchToken, stackIsEqual, tokenize } from './lexer'
 
 import type { Input } from 'lezer'
 import type { PartialParse } from 'lezer-tree'
