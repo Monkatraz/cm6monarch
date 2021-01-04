@@ -13,7 +13,7 @@ If you're wanting to make a language using Monarch, the [official tutorial/playg
 A few things to note:
 - Don't use this if you think you can make a [Lezer](https://lezer.codemirror.net/) grammar. CodeMirror does better with a proper parser.
 - You should use the [CodeMirror 6 highlighter tags](https://codemirror.net/6/docs/ref/#highlight.tags). You can actually use your own tags/scopes, the language will automatically create them and export them for you. However, using these is not advised because they'll be entirely custom to your language and hard to support.
-- The only significant change to the grammar definitions is the addition of the `opens` and `closes` properties in rule actions, which I need to get around to documenting. The gist is that they allow you to state whether a token opens or closes a scope, and that will show up in the final syntax tree. This allows you to nest scopes, which you could not do in the original Monarch.
+- You can now nest scopes, albeit not as nicely as states - check the [`docs/syntax.md`](docs/syntax.md) file (at the bottom) to learn more. The nesting is done as a parser directive, and what I mean is that the parser will actually create a syntax tree from your `parser` directives. You can use this to add code folding and all kinds of other syntax node related features.
 
 To actually, y'know, use it in the code, it looks like this:
 ```ts
