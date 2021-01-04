@@ -13,29 +13,17 @@
  * A Monarch language definition
  */
 export interface IMonarchLanguage {
-	/**
-	 * map from string to ILanguageRule[]
-	 */
+	/** map from string to ILanguageRule[] */
 	tokenizer: { [name: string]: IMonarchLanguageRule[] }
-	/**
-	 * is the language case insensitive?
-	 */
+	/** is the language case insensitive? */
 	ignoreCase?: boolean
-	/**
-	 * is the language unicode-aware? (i.e., /\u{1D306}/)
-	 */
+	/** is the language unicode-aware? (i.e., /\u{1D306}/) */
 	unicode?: boolean
-	/**
-	 * if no match in the tokenizer assign this token class (default 'source')
-	 */
+	/** if no match in the tokenizer assign this token class */
 	defaultToken?: string
-	/**
-	 * for example [['{','}','delimiter.curly']]
-	 */
+	/** for example [['{','}','delimiter.curly']] */
 	brackets?: IMonarchLanguageBracket[]
-	/**
-	 * start symbol in the tokenizer (by default the first entry is used)
-	 */
+	/** start symbol in the tokenizer (by default the first entry is used) */
 	start?: string
 
 	[attr: string]: any
@@ -51,18 +39,12 @@ export type IShortMonarchLanguageRule1 = [string | RegExp, IMonarchLanguageActio
 export type IShortMonarchLanguageRule2 = [string | RegExp, IMonarchLanguageAction, string]
 
 export interface IExpandedMonarchLanguageRule {
-	/**
-	 * match tokens
-	 */
+	/** match tokens */
 	regex?: string | RegExp
-	/**
-	 * action to take on match
-	 */
+	/** action to take on match */
 	action?: IMonarchLanguageAction
 
-	/**
-	 * or an include rule. include all rules from the included state
-	 */
+	/** or an include rule. include all rules from the included state */
 	include?: string
 }
 
@@ -107,28 +89,17 @@ export type IMonarchLanguageAction = IShortMonarchLanguageAction
 	| IExpandedMonarchLanguageAction
 	| (IShortMonarchLanguageAction | IExpandedMonarchLanguageAction)[]
 
-/**
- * This interface can be shortened as an array, ie. ['{','}','delimiter.curly']
- */
+/** This interface can be shortened as an array, ie. ['{','}','delimiter.curly'] */
 export interface IMonarchLanguageBracket {
-	/**
-	 * open bracket
-	 */
+	/** open bracket */
 	open: string
-	/**
-	 * closing bracket
-	 */
+	/** closing bracket */
 	close: string
-	/**
-	 * token class
-	 */
+	/** token class */
 	token: string
 }
 
-/*
- * Type definitions to be used internally to Monarch.
- * Inside monarch we use fully typed definitions and compiled versions of the more abstract JSON descriptions.
- */
+// Internal/compiled type definitions
 
 export const enum MonarchBracket {
 	None = 0,
@@ -214,40 +185,19 @@ export interface IBranch {
 
 // Small helper functions
 
-/**
- * Is a string null, undefined, or empty?
- */
+/** Is a string null, undefined, or empty? */
 export function empty(s: string): boolean {
 	return (s ? false : true)
 }
 
-/**
- * Puts a string to lower case if 'ignoreCase' is set.
- */
+/** Puts a string to lower case if 'ignoreCase' is set. */
 export function fixCase(lexer: ILexerMin, str: string): string {
 	return (lexer.ignoreCase && str ? str.toLowerCase() : str)
 }
 
-/**
- * Ensures there are no bad characters in a CSS token class.
- */
+/** Ensures there are no bad characters in a CSS token class. */
 export function sanitize(s: string) {
 	return s.replace(/[&<>'"_]/g, '-') // used on all output token CSS classes
-}
-
-// Logging
-
-/**
- * Logs a message.
- */
-export function log(lexer: ILexerMin, msg: string) {
-	console.log(`${lexer.languageId}: ${msg}`)
-}
-
-// Throwing errors
-
-export function createError(lexer: ILexerMin, msg: string): Error {
-	return new Error(`${lexer.languageId}: ${msg}`)
 }
 
 // Helper functions for rule finding and substitution
@@ -288,23 +238,16 @@ export function substituteMatches(lexer: ILexerMin, str: string, id: string, mat
 	})
 }
 
-/**
- * Find the tokenizer rules for a specific state (i.e. next action)
- */
+/** Find the tokenizer rules for a specific state (i.e. next action) */
 export function findRules(lexer: ILexer, inState: string): IRule[] | null {
 	let state: string | null = inState
 	while (state && state.length > 0) {
 		const rules = lexer.tokenizer[state]
-		if (rules) {
-			return rules
-		}
+		if (rules) return rules
 
 		const idx = state.lastIndexOf('.')
-		if (idx < 0) {
-			state = null // no further parent
-		} else {
-			state = state.substr(0, idx)
-		}
+		if (idx < 0) state = null // no further parent
+		else state = state.substr(0, idx)
 	}
 	return null
 }
@@ -318,16 +261,29 @@ export function stateExists(lexer: ILexerMin, inState: string): boolean {
 	let state: string | null = inState
 	while (state && state.length > 0) {
 		const exist = lexer.stateNames[state]
-		if (exist) {
-			return true
-		}
+		if (exist) return true
 
 		const idx = state.lastIndexOf('.')
-		if (idx < 0) {
-			state = null // no further parent
-		} else {
-			state = state.substr(0, idx)
-		}
+		if (idx < 0) state = null // no further parent
+		else state = state.substr(0, idx)
 	}
 	return false
+}
+
+export function safeRuleName(rule: IRule | null): string { return rule?.name ?? '(unknown)' }
+
+/** Searches for a bracket in the 'brackets' attribute that matches the input. */
+export function findBracket(lexer: ILexer, matched: string) {
+	if (!matched) return null
+	matched = fixCase(lexer, matched)
+
+	let brackets = lexer.brackets
+	for (const bracket of brackets) {
+		if (bracket.open === matched)
+			return { token: bracket.token, bracketType: MonarchBracket.Open }
+
+		else if (bracket.close === matched)
+			return { token: bracket.token, bracketType: MonarchBracket.Close }
+	}
+	return null
 }

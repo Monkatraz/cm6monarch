@@ -3,74 +3,47 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/*
- * This module only exports 'compile' which compiles a JSON language definition
- * into a typed and checked ILexer definition.
- */
+import { IMonarchLanguage, IMonarchLanguageBracket, empty, substituteMatches, fixCase, MonarchBracket, stateExists, IRule, ILexerMin, FuzzyAction, IBranch, IAction, ILexer } from './monarchCommon'
 
-import { IMonarchLanguage, IMonarchLanguageBracket, createError, empty, substituteMatches, fixCase, MonarchBracket, stateExists, IRule, ILexerMin, FuzzyAction, IBranch, IAction, ILexer } from './monarchCommon'
+// This module exports the compiler for Monarch tokenizer definitions.
 
-/*
- * Type helpers
- *
- * Note: this is just for sanity checks on the JSON description which is
- * helpful for the programmer. No checks are done anymore once the lexer is
- * already 'compiled and checked'.
- *
- */
+// Compile-time type helpers
 
 function isArrayOf(elemType: (x: any) => boolean, obj: any): boolean {
-	if (!obj) {
+	if (!obj) return false
+	if (!(Array.isArray(obj))) return false
+	for (const el of obj) if (!(elemType(el)))
 		return false
-	}
-	if (!(Array.isArray(obj))) {
-		return false
-	}
-	for (const el of obj) {
-		if (!(elemType(el))) {
-			return false
-		}
-	}
+
 	return true
 }
 
 function bool(prop: any, defValue: boolean): boolean {
-	if (typeof prop === 'boolean') {
-		return prop
-	}
+	if (typeof prop === 'boolean') return prop
 	return defValue
 }
 
 function string(prop: any, defValue: string): string {
-	if (typeof (prop) === 'string') {
-		return prop
-	}
+	if (typeof (prop) === 'string') return prop
 	return defValue
 }
 
 
 function arrayToHash(array: string[]): { [name: string]: true } {
 	const result: any = {}
-	for (const e of array) {
-		result[e] = true
-	}
+	for (const e of array) result[e] = true
 	return result
 }
 
 
 function createKeywordMatcher(arr: string[], caseInsensitive: boolean = false): (str: string) => boolean {
-	if (caseInsensitive) {
-		arr = arr.map(function (x) { return x.toLowerCase() })
-	}
+	if (caseInsensitive) arr = arr.map(function (x) { return x.toLowerCase() })
 	const hash = arrayToHash(arr)
-	if (caseInsensitive) {
-		return function (word) {
-			return hash[word.toLowerCase()] !== undefined && hash.hasOwnProperty(word.toLowerCase())
-		}
-	} else {
-		return function (word) {
-			return hash[word] !== undefined && hash.hasOwnProperty(word)
-		}
+	if (caseInsensitive) return function (word) {
+		return hash[word.toLowerCase()] !== undefined && hash.hasOwnProperty(word.toLowerCase())
+	}
+	else return function (word) {
+		return hash[word] !== undefined && hash.hasOwnProperty(word)
 	}
 }
 
@@ -93,9 +66,9 @@ function compileRegExp(lexer: ILexerMin, str: string, sticky = false): RegExp {
 				sub = lexer[attr].source
 			} else {
 				if (lexer[attr] === undefined) {
-					throw createError(lexer, 'language definition does not contain attribute \'' + attr + '\', used at: ' + str)
+					throw new Error('language definition does not contain attribute \'' + attr + '\', used at: ' + str)
 				} else {
-					throw createError(lexer, 'attribute reference \'' + attr + '\' must be a string, used at: ' + str)
+					throw new Error('attribute reference \'' + attr + '\' must be a string, used at: ' + str)
 				}
 			}
 			return (empty(sub) ? '' : '(?:' + sub + ')')
@@ -172,10 +145,10 @@ function createGuard(lexer: ILexerMin, ruleName: string, tkey: string, val: Fuzz
 	else if (op === '@' || op === '!@') {
 		let words = lexer[pat]
 		if (!words) {
-			throw createError(lexer, 'the @ match target \'' + pat + '\' is not defined, in rule: ' + ruleName)
+			throw new Error('the @ match target \'' + pat + '\' is not defined, in rule: ' + ruleName)
 		}
 		if (!(isArrayOf(function (elem) { return (typeof (elem) === 'string') }, words))) {
-			throw createError(lexer, 'the @ match target \'' + pat + '\' must be an array of strings, in rule: ' + ruleName)
+			throw new Error('the @ match target \'' + pat + '\' must be an array of strings, in rule: ' + ruleName)
 		}
 		let inWords = createKeywordMatcher(words, lexer.ignoreCase)
 		tester = function (s) { return (op === '@' ? inWords(s) : !inWords(s)) }
@@ -234,73 +207,70 @@ function createGuard(lexer: ILexerMin, ruleName: string, tkey: string, val: Fuzz
  * may be called during lexing. It is important therefore to compile common cases efficiently
  */
 function compileAction(lexer: ILexerMin, ruleName: string, action: any): FuzzyAction {
-	if (!action) {
-		return { token: '' }
-	}
-	else if (typeof (action) === 'string') {
-		return action // { token: action };
-	}
+	// [/regex/]
+	if (!action) return { token: '' }
+	// [/regex/, 'scope']
+	else if (typeof (action) === 'string') return action
+	// everything else
 	else if (action.token || action.token === '') {
-		if (typeof (action.token) !== 'string') {
-			throw createError(lexer, 'a \'token\' attribute must be of type string, in rule: ' + ruleName)
+		if (typeof (action.token) !== 'string') throw new Error(
+			'a \'token\' attribute must be of type string, in rule: ' + ruleName)
+
+		// only copy specific typed fields (only happens once during compile Lexer)
+		let newAction: IAction = { token: action.token }
+
+		if (action.token.indexOf('$') >= 0)
+			newAction.tokenSubst = true
+
+		// brackets
+		if (typeof (action.bracket) === 'string') {
+			if (action.bracket === '@open') newAction.bracket = MonarchBracket.Open
+			else if (action.bracket === '@close') newAction.bracket = MonarchBracket.Close
+			else throw new Error(
+				'a \'bracket\' attribute must be either \'@open\' or \'@close\', in rule: ' + ruleName)
 		}
-		else {
-			// only copy specific typed fields (only happens once during compile Lexer)
-			let newAction: IAction = { token: action.token }
-			if (action.token.indexOf('$') >= 0) {
-				newAction.tokenSubst = true
-			}
-			if (typeof (action.bracket) === 'string') {
-				if (action.bracket === '@open') {
-					newAction.bracket = MonarchBracket.Open
-				} else if (action.bracket === '@close') {
-					newAction.bracket = MonarchBracket.Close
-				} else {
-					throw createError(lexer, 'a \'bracket\' attribute must be either \'@open\' or \'@close\', in rule: ' + ruleName)
+		// state handling
+		if (action.next) {
+			if (typeof (action.next) !== 'string') throw new Error(
+				'the next state must be a string value in rule: ' + ruleName)
+
+			let next: string = action.next
+			if (!/^(@pop|@push|@popall)$/.test(next)) {
+				// peel off starting @ sign
+				if (next[0] === '@') next = next.substr(1)
+				// no dollar substitution, we can check if the state exists
+				if (next.indexOf('$') < 0) {
+					if (!stateExists(lexer, substituteMatches(lexer, next, '', [], ''))) throw new Error(
+						'the next state \'' + action.next + '\' is not defined in rule: ' + ruleName)
 				}
 			}
-			if (action.next) {
-				if (typeof (action.next) !== 'string') {
-					throw createError(lexer, 'the next state must be a string value in rule: ' + ruleName)
-				}
-				else {
-					let next: string = action.next
-					if (!/^(@pop|@push|@popall)$/.test(next)) {
-						if (next[0] === '@') {
-							next = next.substr(1) // peel off starting @ sign
-						}
-						if (next.indexOf('$') < 0) {  // no dollar substitution, we can check if the state exists
-							if (!stateExists(lexer, substituteMatches(lexer, next, '', [], ''))) {
-								throw createError(lexer, 'the next state \'' + action.next + '\' is not defined in rule: ' + ruleName)
-							}
-						}
-					}
-					newAction.next = next
-				}
-			}
-			if (typeof (action.goBack) === 'number') {
-				newAction.goBack = action.goBack
-			}
-			if (typeof (action.switchTo) === 'string') {
-				newAction.switchTo = action.switchTo
-			}
-			if (typeof (action.log) === 'string') {
-				newAction.log = action.log
-			}
-			if (typeof (action.nextEmbedded) === 'string') {
-				newAction.nextEmbedded = action.nextEmbedded
-			}
-			if ('parser' in action) {
-				newAction.parser = action.parser
-			}
-			return newAction
+			newAction.next = next
 		}
+
+		// everything else
+
+		if (typeof (action.goBack) === 'number')
+			newAction.goBack = action.goBack
+
+		if (typeof (action.switchTo) === 'string')
+			newAction.switchTo = action.switchTo
+
+		if (typeof (action.log) === 'string')
+			newAction.log = action.log
+
+		if (typeof (action.nextEmbedded) === 'string')
+			newAction.nextEmbedded = action.nextEmbedded
+
+		if ('parser' in action)
+			newAction.parser = action.parser
+
+		return newAction
 	}
 	else if (Array.isArray(action)) {
 		let results: FuzzyAction[] = []
-		for (let i = 0, len = action.length; i < len; i++) {
+		for (let i = 0, len = action.length; i < len; i++)
 			results[i] = compileAction(lexer, ruleName, action[i])
-		}
+
 		return { group: results }
 	}
 	else if (action.cases) {
@@ -313,15 +283,14 @@ function compileAction(lexer: ILexerMin, ruleName: string, action: any): FuzzyAc
 				const val = compileAction(lexer, ruleName, action.cases[tkey])
 
 				// what kind of case
-				if (tkey === '@default' || tkey === '@' || tkey === '') {
+				if (tkey === '@default' || tkey === '@' || tkey === '')
 					cases.push({ test: undefined, value: val, name: tkey })
-				}
-				else if (tkey === '@eos') {
+
+				else if (tkey === '@eos')
 					cases.push({ test: function (id, matches, state, eos) { return eos }, value: val, name: tkey })
-				}
-				else {
-					cases.push(createGuard(lexer, ruleName, tkey, val))  // call separate function to avoid local variable capture
-				}
+
+				// call separate function to avoid local variable capture
+				else cases.push(createGuard(lexer, ruleName, tkey, val))
 			}
 		}
 
@@ -329,45 +298,33 @@ function compileAction(lexer: ILexerMin, ruleName: string, action: any): FuzzyAc
 		const def = lexer.defaultToken
 		return {
 			test: function (id, matches, state, eos) {
-				for (const _case of cases) {
-					const didmatch = (!_case.test || _case.test(id, matches, state, eos))
-					if (didmatch) {
-						return _case.value
-					}
-				}
+				for (const _case of cases)
+					if ((!_case.test || _case.test(id, matches, state, eos))) return _case.value
 				return def
 			}
 		}
 	}
-	else {
-		throw createError(lexer, 'an action must be a string, an object with a \'token\' or \'cases\' attribute, or an array of actions; in rule: ' + ruleName)
-	}
+	else throw new Error(
+		'an action must be a string, an object with a \'token\' or \'cases\' attribute, ' +
+		'or an array of actions; in rule: ' + ruleName)
 }
 
 /**
  * Helper class for creating matching rules
  */
 class Rule implements IRule {
-	public regex: RegExp = new RegExp('');
-	public action: FuzzyAction = { token: '' };
-	public matchOnlyAtLineStart: boolean = false;
-	public name: string = '';
+	public regex: RegExp = new RegExp('')
+	public action: FuzzyAction = { token: '' }
+	public matchOnlyAtLineStart: boolean = false
 
-	constructor (name: string) {
-		this.name = name
-	}
+	constructor (public name: string) { }
 
 	public setRegex(lexer: ILexerMin, re: string | RegExp): void {
 		let sregex: string
-		if (typeof (re) === 'string') {
-			sregex = re
-		}
-		else if (re instanceof RegExp) {
-			sregex = (<RegExp>re).source
-		}
-		else {
-			throw createError(lexer, 'rules must start with a match string or regular expression: ' + this.name)
-		}
+		if (typeof (re) === 'string') sregex = re
+		else if (re instanceof RegExp) sregex = (<RegExp>re).source
+		else throw new Error(
+			'rules must start with a match string or regular expression: ' + this.name)
 
 		this.matchOnlyAtLineStart = (sregex.length > 0 && sregex[0] === '^')
 		this.name = this.name + ': ' + sregex
@@ -383,6 +340,7 @@ class Rule implements IRule {
 	}
 }
 
+/** Parses an action and adds any tokens it finds to the lexer's token types. */
 function addTokens(act: FuzzyAction, set: Set<string>) {
 	const token = typeof act === 'string' ? act : act?.token ?? ''
 	if (token && !token.startsWith('@')) set.add(token)
@@ -395,81 +353,80 @@ function addTokens(act: FuzzyAction, set: Set<string>) {
 }
 
 /** Compiles the given Monarch language definition into a Monarch lexer. */
-export function compile(json: IMonarchLanguage): ILexer {
-	if (!json || typeof (json) !== 'object') {
-		throw new Error('Monarch: expecting a language definition object')
-	}
+export function compile(def: IMonarchLanguage): ILexer {
+	if (!def || typeof (def) !== 'object') throw new Error(
+		'Monarch: expecting a language definition object')
 
-	// Create our lexer
-	let lexer: ILexer = <ILexer>{}
+	// init. lexer object
+	let lexer: ILexer = {} as any
 	lexer.maxStack = 100
-	lexer.start = (typeof json.start === 'string' ? json.start : null)
-	lexer.ignoreCase = bool(json.ignoreCase, false)
-	lexer.unicode = bool(json.unicode, false)
-	lexer.defaultToken = string(json.defaultToken, 'source')
+	lexer.start = (typeof def.start === 'string' ? def.start : null)
+	lexer.ignoreCase = bool(def.ignoreCase, false)
+	lexer.unicode = bool(def.unicode, false)
+	lexer.defaultToken = string(def.defaultToken, 'source')
 	lexer.tokenTypes = new Set
 	if (lexer.defaultToken) lexer.tokenTypes.add(lexer.defaultToken)
 
 	// For calling compileAction later on
-	let lexerMin: ILexerMin = <any>json
+	let lexerMin: ILexerMin = def as any
 	lexerMin.ignoreCase = lexer.ignoreCase
 	lexerMin.unicode = lexer.unicode
-	lexerMin.stateNames = json.tokenizer
+	lexerMin.stateNames = def.tokenizer
 	lexerMin.defaultToken = lexer.defaultToken
 
 
-	// Compile an array of rules into newrules where RegExp objects are created.
+	/** Maps messy rules from `rules` into compiled rules inside `newrules`. */
 	function addRules(state: string, newrules: IRule[], rules: any[]) {
 		for (const rule of rules) {
 
+			// { include: '' }
 			let include = rule.include
 			if (include) {
-				if (typeof (include) !== 'string') {
-					throw createError(lexer, 'an \'include\' attribute must be a string at: ' + state)
-				}
-				if (include[0] === '@') {
-					include = include.substr(1) // peel off starting @
-				}
-				if (!json.tokenizer[include]) {
-					throw createError(lexer, 'include target \'' + include + '\' is not defined at: ' + state)
-				}
-				addRules(state + '.' + include, newrules, json.tokenizer[include])
+				if (typeof (include) !== 'string')
+					throw new Error('an \'include\' attribute must be a string at: ' + state)
+
+				if (include[0] === '@') include = include.substr(1) // peel off starting @
+
+				if (!def.tokenizer[include])
+					throw new Error('include target \'' + include + '\' is not defined at: ' + state)
+
+				addRules(state + '.' + include, newrules, def.tokenizer[include])
 			}
 			else {
 				const newrule = new Rule(state)
 
 				// Set up new rule attributes
 				if (Array.isArray(rule) && rule.length >= 1 && rule.length <= 3) {
+
 					newrule.setRegex(lexerMin, rule[0])
+
+					// [/regex/, 'scope', 'next']
 					if (rule.length >= 3) {
-						if (typeof (rule[1]) === 'string') {
+						if (typeof (rule[1]) === 'string')
 							newrule.setAction(lexerMin, { token: rule[1], next: rule[2] }, lexer.tokenTypes)
-						}
 						else if (typeof (rule[1]) === 'object') {
 							const rule1 = rule[1]
 							rule1.next = rule[2]
 							newrule.setAction(lexerMin, rule1, lexer.tokenTypes)
 						}
-						else {
-							throw createError(lexer, 'a next state as the last element of a rule can only be given if the action is either an object or a string, at: ' + state)
-						}
+						else throw new Error(
+							'a next state as the last element of a rule can only be given' +
+							'if the action is either an object or a string, at: ' + state)
 					}
-					else {
-						newrule.setAction(lexerMin, rule[1], lexer.tokenTypes)
-					}
+					// [/regex/, 'scope' | { action }]
+					else newrule.setAction(lexerMin, rule[1], lexer.tokenTypes)
 				}
+				// { regex, action }
 				else {
-					if (!rule.regex) {
-						throw createError(lexer, 'a rule must either be an array, or an object with a \'regex\' or \'include\' field at: ' + state)
-					}
-					if (rule.name) {
-						if (typeof rule.name === 'string') {
-							newrule.name = rule.name
-						}
-					}
-					if (rule.matchOnlyAtStart) {
+					if (!rule.regex) throw new Error(
+						'a rule must either be an array, or an object with a \'regex\' or \'include\' field at: ' + state)
+
+					if (rule.name && typeof rule.name === 'string')
+						newrule.name = rule.name
+
+					if (rule.matchOnlyAtStart)
 						newrule.matchOnlyAtLineStart = bool(rule.matchOnlyAtLineStart, false)
-					}
+
 					newrule.setRegex(lexerMin, rule.regex)
 					newrule.setAction(lexerMin, rule.action, lexer.tokenTypes)
 				}
@@ -480,46 +437,41 @@ export function compile(json: IMonarchLanguage): ILexer {
 	}
 
 	// compile the tokenizer rules
-	if (!json.tokenizer || typeof (json.tokenizer) !== 'object') {
-		throw createError(lexer, 'a language definition must define the \'tokenizer\' attribute as an object')
-	}
+
+	if (!def.tokenizer || typeof (def.tokenizer) !== 'object') throw new Error(
+		'a language definition must define the \'tokenizer\' attribute as an object')
 
 	lexer.tokenizer = <any>[]
-	for (let key in json.tokenizer) {
-		if (json.tokenizer.hasOwnProperty(key)) {
-			if (!lexer.start) {
-				lexer.start = key
-			}
-
-			const rules = json.tokenizer[key]
+	for (let key in def.tokenizer) {
+		if (def.tokenizer.hasOwnProperty(key)) {
+			if (!lexer.start) lexer.start = key
+			const rules = def.tokenizer[key]
 			lexer.tokenizer[key] = new Array()
 			addRules('tokenizer.' + key, lexer.tokenizer[key], rules)
 		}
 	}
 
-	// Set simple brackets
-	if (json.brackets) {
-		if (!(Array.isArray(<any>json.brackets))) {
-			throw createError(lexer, 'the \'brackets\' attribute must be defined as an array')
-		}
-	}
-	else {
-		json.brackets = [
+	// brackets
+
+	if (def.brackets && !(Array.isArray(<any>def.brackets)))
+		throw new Error('the \'brackets\' attribute must be defined as an array')
+
+	if (!def.brackets) {
+		def.brackets = [
 			{ open: '{', close: '}', token: 'brace' },
 			{ open: '[', close: ']', token: 'squareBracket' },
 			{ open: '(', close: ')', token: 'paren' },
 			{ open: '<', close: '>', token: 'angleBracket' }]
 	}
 	let brackets: IMonarchLanguageBracket[] = []
-	for (let el of json.brackets) {
+	for (let el of def.brackets) {
 		let desc: any = el
-		if (desc && Array.isArray(desc) && desc.length === 3) {
+		if (desc && Array.isArray(desc) && desc.length === 3)
 			desc = { token: desc[2], open: desc[0], close: desc[1] }
-		}
-		if (desc.open === desc.close) {
-			throw createError(lexer, 'open and close brackets in a \'brackets\' attribute must be different: ' + desc.open +
-				'\n hint: use the \'bracket\' attribute if matching on equal brackets is required.')
-		}
+		if (desc.open === desc.close) throw new Error(
+			'open and close brackets in a \'brackets\' attribute must be different: ' + desc.open +
+			'\n hint: use the \'bracket\' attribute if matching on equal brackets is required.')
+
 		if (typeof desc.open === 'string' && typeof desc.token === 'string' && typeof desc.close === 'string') {
 			brackets.push({
 				token: desc.token,
@@ -527,9 +479,8 @@ export function compile(json: IMonarchLanguage): ILexer {
 				close: fixCase(lexer, desc.close)
 			})
 		}
-		else {
-			throw createError(lexer, 'every element in the \'brackets\' array must be a \'{open,close,token}\' object or array')
-		}
+		else throw new Error(
+			'every element in the \'brackets\' array must be a \'{open,close,token}\' object or array')
 	}
 	lexer.brackets = brackets
 
