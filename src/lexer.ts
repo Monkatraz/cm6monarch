@@ -40,14 +40,14 @@ export class MonarchEmbeddedData {
 
   /** Removes serialized embedded data from a state string. */
   static remove(state: string) {
-    return state.replace(/\.&lng.*$/, '')
+    return state.replace(/(?<=^.*?)\.&lng.*$/, '')
   }
 
   /** Parses, and returns, an embedded data object from a state. */
   static deserialize(state: string) {
     if (state && EMBEDDED_LANG_REGEX.test(state)) {
       const matches = state.match(EMBEDDED_LANG_REGEX)
-      if (matches) return new MonarchEmbeddedData(matches[0], parseInt(matches[1]), parseInt(matches[2]))
+      if (matches) return new MonarchEmbeddedData(matches[1], parseInt(matches[2]), parseInt(matches[3]))
     }
     return null
   }
@@ -294,7 +294,8 @@ export function tokenize(opts: TokenizeOpts) {
         if (action.nextEmbedded === '@pop') {
           if (!isEmbedded) throw new Error(
             'attempted to pop nested stack while not nesting any language in rule: ' + safeRuleName(rule))
-          poppedEmbedded.push(stack.embedded!.finalize(pos - matched.length))
+          const range = stack.embedded!.finalize(pos - matched.length)
+          poppedEmbedded.push(range)
           stack.endEmbedded()
           isEmbedded = false
         } else {
@@ -303,7 +304,6 @@ export function tokenize(opts: TokenizeOpts) {
           const embedded = substituteMatches(lexer, action.nextEmbedded, matched, matches, state)
           const start = action.token === '@rematch' ? pos - matched.length : pos
           stack.setEmbedded(embedded, 0, start)
-          // we need to push a special token so that we can find our nesting node in the token stream
           pushEmbedded = start
         }
       }
@@ -416,7 +416,8 @@ export function tokenize(opts: TokenizeOpts) {
         if (lineLength === 0 || stackLen0 !== stack.depth || state !== stack.state || (!groupMatching ? 0 : groupMatching.groups.length) !== groupLen0)
           continue
         // if nothing changed at all, that means we're not moving
-        else throw new Error('no progress in tokenizer in rule: ' + safeRuleName(rule))
+        else throw new Error(
+          'no progress in tokenizer in rule: ' + safeRuleName(rule))
       }
 
       if (!isEmbedded) {
@@ -445,9 +446,8 @@ export function tokenize(opts: TokenizeOpts) {
             tokens[tokens.length - 1].end = pos
           else tokens.push(token)
         }
-        // needs to be pushed after our token so it goes here
-        if (pushEmbedded) tokens.push({ type: '_NEST_', start: pushEmbedded, end: pushEmbedded })
       }
+      if (pushEmbedded) tokens.push({ type: '_NEST_', start: pushEmbedded, end: pushEmbedded })
     }
     // store the last state so that we can compare new tokens against an old ones (for merging them)
     last = { stack: stack.serialize(), token: tokens[tokens.length - 1] }

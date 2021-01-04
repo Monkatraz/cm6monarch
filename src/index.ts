@@ -1,5 +1,6 @@
-import { NodeSet, NodeType, Tree } from 'lezer-tree'
-import { Language, LanguageSupport, languageDataProp, defineLanguageFacet, LanguageDescription } from '@codemirror/language'
+import { NodeSet, NodeType, Tree, stringInput } from 'lezer-tree'
+import { Language, EditorParseContext, LanguageSupport, languageDataProp, defineLanguageFacet, LanguageDescription } from '@codemirror/language'
+import { EditorState } from '@codemirror/state'
 import { Tag, tags, styleTags } from "@codemirror/highlight"
 
 import { compile } from './monarch/monarchCompile'
@@ -8,7 +9,6 @@ import { MonarchStack, stackIsEqual, tokenize } from './lexer'
 import type { Input } from 'lezer'
 import type { PartialParse, NodePropSource } from 'lezer-tree'
 import type { Extension } from '@codemirror/state'
-import type { EditorParseContext } from '@codemirror/language'
 import type { MonarchToken, MonarchEmbeddedRange } from './lexer'
 import type { IMonarchLanguage, ILexer } from './monarch/monarchCommon'
 
@@ -42,15 +42,6 @@ export interface MonarchLanguageData {
   tags: { [name: string]: Tag }
   /** A `LanguageDescription` object, commonly used for nesting languages. */
   description: LanguageDescription
-  /** A function that returns an array containing the language's data `Facet` and incremental parser.
-   *  I added this because I had strange module mutation bugs due to a bundler.
-   *  This function can get around those issues because it allows you to create the language yourself.
-   *  @example let myLang = new Language(...myLangData.props()) // use it like this
-   */
-  props: () => [
-    ReturnType<typeof defineLanguageFacet>,
-    { startParse(input: Input, startPos: number, context: EditorParseContext): PartialParse }
-  ]
 }
 
 /** Creates a new Monarch-based language.
@@ -61,7 +52,6 @@ export interface MonarchLanguageData {
  *  | `load()` | a function used to load the language as an extension/`LanguageSupport` |
  *  | `description` | a `LanguageDescription` object, commonly used for nesting |
  *  | `tags` | a list of new `Tag` objects generated automatically from the language definition |
- *  | `props()` | a hack that lets you create the language yourself using the data facet and parser |
  */
 export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchLanguageData {
   // general chores before we can do stuff with the data
@@ -78,16 +68,6 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
   const unknownTags = Array.from(lexer.tokenTypes).filter(tag => !(tag in tags))
   unknownTags.forEach(tagName => { if (tagName) newTags[tagName] = Tag.define() })
 
-  const props = () => {
-    const dataFacet = defineLanguageFacet(langData)
-    const parser = createMonarchState(
-      { lexer, configure: opts.configure ?? {}, tags: newTags, dataFacet, nestLanguages: opts.nestLanguages ?? [] })
-    const startParse = (input: Input, startPos: number, context: EditorParseContext) => {
-      return monarchParse(parser, input, startPos, context)
-    }
-    return [dataFacet, { startParse }]
-  }
-
   const load = function () {
     const dataFacet = defineLanguageFacet(langData)
     const parser = createMonarchState(
@@ -101,14 +81,13 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
   }
   const description = LanguageDescription.of({ ...langDesc, load: async () => load() })
 
-  return { props: (props as unknown as MonarchLanguageData['props']), load, tags: newTags, description }
+  return { load, tags: newTags, description }
 }
 
 // -- PARSER
 
 // TODO: indent handling
 // TODO: potentially find a way of line shifting (if new line, check next line for the string)
-// TODO: embedded languages
 // TODO: use monarch's brace handling automatically and get brace info into nodes
 // TODO: allow 'emphasis.slash' where the '.slash' makes the 'emphasis' more specific, but uses the same scope
 // TODO: use the tree fragments to get the exact edited text positions (relatively close, anyways)
@@ -125,10 +104,6 @@ function quickHash(s: string) {
   return h
 }
 
-export interface MonarchConfigure {
-  props?: NodePropSource[]
-}
-
 /** Represents the state of a Monarch incremental parser. */
 interface MonarchState {
   /** The compiled lexer used to tokenize input lines. */
@@ -143,6 +118,10 @@ interface MonarchState {
   lines: MonarchLine[]
   /** The list of languages available for nesting. */
   nestLanguages: LanguageDescription[]
+}
+
+interface MonarchConfigure {
+  props?: NodePropSource[]
 }
 
 /** The data required to init. a `MonarchState`. */
@@ -200,10 +179,8 @@ function createMonarchState(
 
 /** Directs the parser to nest tokens using the node's type ID. */
 type MappedParserAction = [id: number, inclusive: number]
-
 /** A more efficient representation of `MonarchToken` used in the parser.  */
 type MappedToken = [type: number, start: number, end: number, open?: MappedParserAction, close?: MappedParserAction]
-
 /** Compiles a mapped token from a `MonarchToken` and a mapping of scope names to `NodeType` IDs. */
 function compileMappedToken(token: MonarchToken, map: Map<string, number>): MappedToken {
   let parserOpenAction: MappedParserAction | undefined
@@ -230,6 +207,52 @@ function compileMappedToken(token: MonarchToken, map: Map<string, number>): Mapp
   ]
 }
 
+class MonarchEmbeddedParser {
+  lang: LanguageDescription | null = null
+  hash: number = 0
+  cache: Tree = Tree.empty
+
+  constructor (
+    public state: MonarchState,
+    public range: MonarchEmbeddedRange
+  ) {
+    if (state.nestLanguages.length) {
+      this.lang = LanguageDescription.matchLanguageName(state.nestLanguages, range.lang)
+      if (this.lang) this.lang.load()
+    }
+  }
+
+  getParser() {
+    if (this.lang?.support) {
+      // parser loaded
+      const host = this.lang.support.language.parser
+      return (input: string, startPos: number) => {
+        const len = input.length
+        const hash = quickHash(input)
+
+        if (hash === this.hash && this.cache.length > 0) {
+          // result already cached, return 'fake' `PartialParse`
+          this.hash = hash
+          const cache = this.cache
+          return { advance() { return cache }, get pos() { return input.length }, forceFinish() { return cache } }
+        } else {
+          // actual parser from language
+          this.hash = hash
+          // isolated context shenanigans
+          // basically the nested parser is entirely unaware of the sorrounding document
+          const isolatedContext =
+            new (EditorParseContext as any)(host, EditorState.create({ doc: input }),
+              [], Tree.empty, { from: startPos, to: len }, [])
+          return host.startParse.bind(host)(stringInput(input), startPos, isolatedContext)
+        }
+      }
+    }
+    // parser not ready yet
+    return (input: string, startPos: number, context: EditorParseContext) =>
+      EditorParseContext.skippingParser.startParse(stringInput(input), startPos, context)
+  }
+}
+
 /** Represents a text line within the parser's cache. It is used to tokenize and compile strings as well. */
 class MonarchLine {
 
@@ -238,7 +261,7 @@ class MonarchLine {
   startStack!: string[]
   endStack!: string[]
   tokens!: MappedToken[]
-  embeds!: MonarchEmbeddedRange[]
+  embeds!: MonarchEmbeddedParser[]
   lastOffset!: number
   lastBuffer!: MappedToken[]
 
@@ -273,7 +296,7 @@ class MonarchLine {
     // tokenize
     const result = tokenize({ line, lexer: this.state.lexer, stack })
     this.tokens = result.tokens.map((token) => compileMappedToken(token, this.state.nodeMap))
-    this.embeds = result.poppedEmbedded
+    this.embeds = result.poppedEmbedded.map(range => new MonarchEmbeddedParser(this.state, range))
     this.endStack = stack.serialize()
   }
 
@@ -321,6 +344,11 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
   // current line idx
   let idxLine = context.state.doc.lineAt(start).number - 1
 
+  // nesting, a line may have multiple nested langs so it needs to have an inline index
+  let nesting = false
+  let nestingIdx = 0
+  let nestingParser: PartialParse | null = null
+
   // we don't actually use a character pos, so we fake a function for it
   let early = false
   const pos = () => {
@@ -332,25 +360,30 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
   // it's also called when the parser itself has nothing left to do (or leaves early)
   const getTree = () => {
     // go through the cache/lines and get all of our tokens in a list
-    // we make sure to only go for as many lines as we're actually parsing
     let offset: number = 0
+    const embeds: Tree[] = []
     const tokens = state.lines.slice(0, docLines.length).flatMap(line => {
       let lineTokens = line.compile(offset)
       offset += line.length + 1
+      embeds.push(...line.embeds.map(embed => embed.cache))
       return lineTokens
     })
 
     // here we're going to process `opens` and `closes` data and make an actually nesting tree
+    let embedIdx = 0
     let stack: [name: number, start: number, children: number][] = []
     const increment = () => stack.forEach(state => state[2]++)
     const buffer: number[] = []
     for (const token of tokens) {
       // nesting lang handling
       if (token[0] === -1) {
-        buffer.push(0, token[1], token[2], -1)
+        // undocumented features !!!!
+        // passing a -1 to the size tells the tree builder to use the `reused` property
+        // the ID of the token determines which slot in `reused` will take the place of this token
+        buffer.push(embedIdx, token[1], token[2], -1)
+        embedIdx++
         increment()
       } else {
-        // order must be [closes -> token -> opens]
         // closing
         let closed = 0
         if (token[4] && stack.length) {
@@ -369,12 +402,12 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
             closed = 1
           }
         }
-        // actual token itself
+        // token itself
         if (token[0] && !(token[4] && token[4][1])) {
           buffer.push(token[0], token[1], token[2], 4)
           increment()
         }
-        // opening
+        // opening, checks for if the open and close strings are the same (closing has exclusivity)
         if (token[3] && (!token[4] || (token[3][0] !== token[4][0] || (token[3][0] === token[4][0] && !closed)))) {
           stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[0] && token[3][1] ? 1 : 0])
         }
@@ -387,16 +420,17 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
       stack.forEach(state => state[2]++)
     }
 
-    // compile our huge ass tree
+    // handle embeddeds that never finish by replacing them with empty trees
+    while (embeds.length <= embedIdx) embeds.push(Tree.empty)
+
     const tree = Tree.build({
       buffer: buffer,
       length: pos(),
       topID: 0,
-      reused: [Tree.empty],
+      reused: embeds,
       nodeSet: state.nodeSet
     })
-    // console.log(
-    //   'start (ch): ' + start + ' | ' + 'ended (line): ' + idxLine + ' | ' + (buffer.length / 4) + ' tokens')
+
     return tree
   }
 
@@ -414,6 +448,30 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
         cachedLine = state.lines[idxLine]
       }
 
+      // not parsing nested but needs to be
+      if (!nesting && cachedLine.embeds[nestingIdx]) {
+        nesting = true
+        const embed = cachedLine.embeds[nestingIdx]
+        // get absolute start and end from the relative line offsets
+        const start = context.state.doc.line(idxLine - embed.range.line + 1).from + embed.range.start
+        const end = context.state.doc.line(idxLine + 1).from + embed.range.end
+        nestingParser = embed.getParser()(input.read(start, end), 0, context)
+      }
+
+      // already parsing nested
+      if (nesting && nestingParser) {
+        const done = nestingParser.advance()
+        if (done) {
+          nesting = false
+          nestingParser = null
+          cachedLine.embeds[nestingIdx].cache = done
+          nestingIdx++
+        }
+        else return null
+      }
+
+      // reset for next line
+      nestingIdx = 0
       idxLine++
 
       // this basically catches when the user is just changing a single line
