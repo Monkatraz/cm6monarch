@@ -1,4 +1,8 @@
 # `cm6-monarch`
+<a href="https://www.npmjs.com/package/cm6-monarch">
+<img src="https://img.shields.io/npm/v/cm6-monarch">
+</a>
+
 This is a 'fork' of the [Monaco Editor's](https://github.com/Microsoft/monaco-editor) Monarch syntax highlighter to [CodeMirror 6](https://github.com/codemirror/codemirror.next/). It is generally compatible with Monaco Editor language sources. In contrast to the original implementation, this version of Monarch has been _radically supercharged_ with many backend improvements. The most useful new features are likely the `opens`, `closes` syntax tree additions, and the usage of sticky regexes in the backend, allowing for full lookbehind support.
 
 **Please note:** This isn't done. It does work - and I don't think it's too buggy, but it's missing a few essential features. I'm working on it!
