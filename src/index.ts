@@ -94,6 +94,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // TODO: add action.transform
 // (matches, stack) => FuzzyAction | FuzzyAction[] | null
 
+// ? multi-line 'token' mode?
 // ? inspect tokens widgets? pls cm6 add it urself
 
 // https://gist.github.com/hyamamoto/fd435505d29ebfa3d9716fd2be8d42f0#gistcomment-2694461
