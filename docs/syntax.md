@@ -4,7 +4,7 @@ This document is a mostly dry, precise description of all of the various constru
 
 ## Tokenization
 
-However, this document will begin with describing how Monarch actually interacts with a document, as that is essential in understanding how to program the tokenizer.
+However, first we will describe how Monarch actually interacts with a document, as that is essential in understanding how to program the tokenizer.
 
 Fundamentally, Monarch is a line-based tokenizer. What this means is that your document will first be broken into lines, and then for every line Monarch will output a series of contiguous tokens that describe the syntax highlighting for that line.
 
@@ -113,7 +113,7 @@ const rule1 = [/@keywordsAsync/, '']
 const rule2 = [/\w+(?!@control)/, '']
 ```
 
-Attributes are simply inserted in-place where they are found inside of a regex.
+Attributes are simply inserted directly where they are found inside of a regex.
 
 ### Actions
 _Actions_ inform the tokenizer about what to do after it has made a match. Actions have the most involved syntax - and so this document will break them down into their individual properties.
@@ -127,7 +127,7 @@ const action2 = 'foo'
 const action3 = ['foo', 'bar']
 ```
 
-The first two types are identical in effect. The last form are for _group matches_. Group matches effectively break a single regular expression into rules made from its individual capture group.
+The first two types are identical in effect. The last form is for _group matches_. Group matches effectively break a single regular expression into rules made from its individual capture group.
 ```ts
 const rule = [/(match1)(match2)(match3)/, [action1, action2, action3]]
 ```
@@ -184,9 +184,9 @@ The `next` property informs the tokenizer to make a state change before the next
 It can be in one of four forms:
 | | |
 | :-- | :-- |
-| `foo`, `@foo` | Pushes the specified state to the stack, which makes it the active state. It can be prefixed with an `@` character, or left without one. |
-| `@pop` | Pops the current state from the stack and returns to the previous state. |
-| `@push` | Pushes the _current state_ to the stack. |
+| `foo`     | Pushes the specified state to the stack, which makes it the active state. It can be prefixed with an `@` character, or left without one. |
+| `@pop`    | Pops the current state from the stack and returns to the previous state. |
+| `@push`   | Pushes the _current state_ to the stack. |
 | `@popall` | Pops all states except for the very first, returning to top/root. |
 
 ```ts
@@ -251,7 +251,7 @@ The _guard_ expression can be in one of four forms:
 | :-- | :-- |
 | `foo` | as in does not start with `$` or `@`. This is parsed as _regex_, not as a simple string comparison. The regex provided is treated like any other regex in the tokenizer, although it does need to be escaped as it is a string. This form is technically a short-hand for `$#~foo`, which is explained in the next section. |
 | `@bar` | as in an attribute. Matches against an attribute string or against all strings within an attribute array. See the section on _regex_ and _attributes_. |
-| `@eos` | Matches against the text being at the very end of the current line. |
+| `@eos`     | Matches against the text being at the very end of the current line. |
 | `@default` | Matches against any input, like the `default` case in an ordinary `switch -> case` statement. |
 
 As eluded to, the previously shown 'regex' pattern is a short-hand for the syntax `[pat][op]match`. 
@@ -273,7 +273,7 @@ It can have two states, with two (optional) properties each:
 | | |
 | :-- | :-- |
 | `open or close` | This directs the parser to open or close the given syntax node _after_ or _before_ the matched token.
-| `start or end` | This directs the parser to open or close the given syntax node _with_ the matched tokens _inside_ of the opened/closed node.
+| `start or end`  | This directs the parser to open or close the given syntax node _with_ the matched tokens _inside_ of the opened/closed node.
 
 The 'syntax node' type given acts exactly like the `token` properties value type, with the exception of the `@rematch` string not being special. Generally, a language will use the `parser` property in conjunction with the capitalized `Foo` tags in order to support otherwise impossible language features.
 
