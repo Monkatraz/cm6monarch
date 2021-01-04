@@ -27,83 +27,128 @@ function findBracket(lexer: ILexer, matched: string) {
 // -- STACK
 
 
-
-// It's important to know that the `line` mentioned here is an _offset_ from final line the nesting ended on.
-export type MonarchEmbeddedLang = { lang: string, line: number, start: number, end: number }
-export type MonarchStackEmbeddedLang = { lang: string, line: number, start: number }
+export type MonarchEmbeddedRange = { lang: string, line: number, start: number, end: number }
 
 // '[state].&lng=[lang]&ln=[ln-num]&strt=[offset]'
 const EMBEDDED_LANG_REGEX = /.*?\.&lng=([^&]+?)&ln=([^&]+?)&strt=([^&]+?)$/
 
-/** A mutable, shallow, and copyable `Array<string>` stack. */
-export interface MonarchStack {
-  /** The current state of the stack. */
-  state: string
-  /** The total depth of the stack. */
-  depth: number
-  /** The stack as it was before the current state. */
-  parent: MonarchStack
-  /** The currently embedded language in the stack, if present. */
-  embedded: MonarchStackEmbeddedLang | null
-  /** Embeds information about a nested language into the stack. */
-  embed(lang: string, line: number, start: number): void
-  /** Removes the embedded language from the stack. */
-  popEmbedded(): void
-  /** Adds an offset to the line of the embedded language. */
-  offsetEmbedded(offset: number): void
-  /** Returns a clone of the internal stack as an array of strings. */
-  serialize(): string[]
-  /** Returns a clone of the stack. */
-  clone(): MonarchStack
-  /** Adds a new state to the stack. */
-  push(state: string): void
-  /** Switches to a new state in the stack. */
-  switchTo(state: string): void
-  /** Removes the last state in the stack. */
-  pop(): void
-  /** Removes all states in the stack, except for the first. */
-  popall(): void
-}
+export class MonarchEmbeddedData {
+  constructor (
+    /** The language of the embedded data, e.g. 'javascript'. */
+    public lang: string,
+    /** The starting line number of the embedded data, usually used as a _relative offset_ from the end line. */
+    public line: number,
+    /** The stating offset from the beginning of the line. */
+    public start: number
+  ) { }
 
-// TODO: it's gotten too big and needs to be a class now
-
-/** Creates a new `MonarchStack` object. */
-export function createMonarchStack(start: string[]): MonarchStack {
-  let stack: string[] = [...start] // clone
-
-  // deserialize embedded
-  const lst = stack.length - 1
-  let embedded: MonarchStackEmbeddedLang | null = null
-  if (EMBEDDED_LANG_REGEX.test(stack[lst])) {
-    const matches = stack[lst].match(EMBEDDED_LANG_REGEX)
-    if (matches) embedded = { lang: matches[0], line: parseInt(matches[1]), start: parseInt(matches[2]) }
-    stack[lst] = stack[lst].replace(/\.&lng.*$/, '')
+  /** Serializes the embedded data into a string that can be attached to the front of a state `string[]` array. */
+  public serialize() {
+    return `.&lng=${this.lang}&ln=${this.line}&strt=${this.start}`
   }
 
-  return {
-    get state() { return stack[stack.length - 1] },
-    get depth() { return stack.length },
-    get parent() { const parent = this.clone(); parent.pop(); return parent },
-    clone() { return createMonarchStack([...this.serialize()]) },
-    push(state: string) { stack.push(state) },
-    switchTo(state: string) { stack[stack.length - 1] = state },
-    pop() { stack.pop() },
-    popall() { stack = [stack.shift() ?? 'root'] },
-    // embedded shenanigans
-    get embedded() {
-      // returns a clone
-      return embedded ? { lang: embedded.lang, line: embedded.line, start: embedded.start } : null
-    },
-    embed(lang: string, line: number, start: number) { embedded = { lang, line, start } },
-    popEmbedded() { embedded = null },
-    offsetEmbedded(offset: number) { if (embedded) embedded.line += offset },
-    // serializing
-    serialize() {
-      const embeddedStr = embedded ? `.&lng=${embedded.lang}&ln=${embedded.line}&strt=${embedded.start}` : ''
-      const copyStack = [...stack]
-      copyStack[copyStack.length - 1] += embeddedStr
-      return copyStack
+  /** Returns the embedded data with a provided, final end position. */
+  public finalize(end: number): MonarchEmbeddedRange {
+    return { lang: this.lang, line: this.line, start: this.start, end }
+  }
+
+  /** Increments the line number by one, and returns the new number. */
+  public increment() {
+    return this.line += 1
+  }
+
+  /** Returns a clone of the embedded data object. */
+  public clone() {
+    return new MonarchEmbeddedData(this.lang, this.line, this.start)
+  }
+
+  /** Removes serialized embedded data from a state string. */
+  static remove(state: string) {
+    return state.replace(/\.&lng.*$/, '')
+  }
+
+  /** Parses, and returns, an embedded data object from a state. */
+  static deserialize(state: string) {
+    if (state && EMBEDDED_LANG_REGEX.test(state)) {
+      const matches = state.match(EMBEDDED_LANG_REGEX)
+      if (matches) return new MonarchEmbeddedData(matches[0], parseInt(matches[1]), parseInt(matches[2]))
     }
+    return null
+  }
+}
+
+export class MonarchStack {
+
+  /** The internal `string[]` stack. */
+  private stack: string[]
+
+  /** The embedded data, if present. */
+  public embedded: MonarchEmbeddedData | null = null
+  /** The top-most state of the stack. */
+  public get state() { return this.stack[this.stack.length - 1] }
+  /** The length (depth), or number of stack nodes, in the stack. */
+  public get depth() { return this.stack.length }
+  /** The parent of the stack, i.e. the state of the stack if it were to be popped. */
+  public get parent() { const parent = this.clone(); parent.pop(); return parent }
+
+  constructor (serializedStack: string[]) {
+    const { stack, embedded } = MonarchStack.deserialize(serializedStack)
+    this.stack = stack
+    this.embedded = embedded
+  }
+
+  /** Push a new state to the top of the stack. */
+  public push(state: string) { this.stack.push(state) }
+
+  /** Switch to a new state, replacing the current one. */
+  public switchTo(state: string) { this.stack[this.stack.length - 1] = state }
+
+  /** Remove the top-most state of the stack. */
+  public pop() { return this.stack.pop() }
+
+  /** Remove all states from the stack except the very first. */
+  public popall() { this.stack = [this.stack.shift() ?? 'root'] }
+
+  /** Returns a deep clone of the stack. */
+  public clone() {
+    const clone = new MonarchStack([...this.stack])
+    if (this.embedded)
+      clone.embedded = this.embedded.clone()
+    return clone
+  }
+
+  /** Sets the embedded data. */
+  public setEmbedded(lang: string, line: number, start: number) {
+    this.embedded = new MonarchEmbeddedData(lang, line, start)
+  }
+
+  /** Removes the embedded data. */
+  public endEmbedded() {
+    const embedded = this.embedded
+    this.embedded = null
+    return embedded
+  }
+
+  /** Serializes the stack and embedded data into a list of strings. */
+  public serialize() {
+    const copy = [...this.stack]
+    const embeddedString = this.embedded ? this.embedded.serialize() : ''
+    if (embeddedString)
+      copy[copy.length - 1] += embeddedString
+    return copy
+  }
+
+  /** Deserializes the stack and embedded data from a list of strings. */
+  static deserialize(stack: string[]) {
+    stack = [...stack] // clone to prevent mutations
+
+    // deserialize embedded data
+    const last = stack.length - 1
+    const embedded = MonarchEmbeddedData.deserialize(stack[last])
+    if (embedded)
+      stack[last] = MonarchEmbeddedData.remove(stack[last])
+
+    return { stack, embedded }
   }
 }
 
@@ -153,9 +198,8 @@ export function tokenize(opts: TokenizeOpts) {
   const stack = opts.stack
   const lexer = opts.lexer
 
-  let isEmbedded = stack.embedded !== null ? true : false
-  let poppedEmbedded: MonarchEmbeddedLang[] = []
-  if (isEmbedded) stack.offsetEmbedded(1)
+  let poppedEmbedded: MonarchEmbeddedRange[] = []
+  if (stack.embedded) stack.embedded.increment()
 
   let pos = opts.offset ?? 0
 
@@ -184,7 +228,7 @@ export function tokenize(opts: TokenizeOpts) {
     let action: FuzzyAction | FuzzyAction[] | null = null
     let rule: IRule | null = null
 
-    isEmbedded = stack.embedded !== null ? true : false
+    let isEmbedded = stack.embedded !== null ? true : false
 
     // check if we need to process group matches first
     if (groupMatching) {
@@ -266,8 +310,8 @@ export function tokenize(opts: TokenizeOpts) {
           if (!isEmbedded) throw createError(lexer,
             'attempted to pop nested stack while not nesting any language in rule: ' + safeRuleName(rule))
           else {
-            poppedEmbedded.push({ ...stack.embedded!, end: pos - matched.length })
-            stack.popEmbedded()
+            poppedEmbedded.push(stack.embedded!.finalize(pos - matched.length))
+            stack.endEmbedded()
             isEmbedded = false
           }
         }
@@ -277,7 +321,7 @@ export function tokenize(opts: TokenizeOpts) {
           else {
             const embedded = substituteMatches(lexer, action.nextEmbedded, matched, matches, state)
             const start = action.token === '@rematch' ? pos - matched.length : pos
-            stack.embed(embedded, 0, start)
+            stack.setEmbedded(embedded, 0, start)
             // we need to push a special token so that we can find our nesting node in the token stream
             tokens.push({
               type: '_NEST_',

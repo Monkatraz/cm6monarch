@@ -3,13 +3,13 @@ import { Language, LanguageSupport, languageDataProp, defineLanguageFacet, Langu
 import { Tag, tags, styleTags } from "@codemirror/highlight"
 
 import { compile } from './monarch/monarchCompile'
-import { createMonarchStack, stackIsEqual, tokenize } from './lexer'
+import { MonarchStack, stackIsEqual, tokenize } from './lexer'
 
 import type { Input } from 'lezer'
 import type { PartialParse } from 'lezer-tree'
 import type { Extension } from '@codemirror/state'
 import type { EditorParseContext } from '@codemirror/language'
-import type { MonarchStack, MonarchToken, MonarchEmbeddedLang } from './lexer'
+import type { MonarchToken, MonarchEmbeddedRange } from './lexer'
 import type { IMonarchLanguage, ILexer } from './monarch/monarchCommon'
 
 type TagList = { [name: string]: Tag }
@@ -191,7 +191,7 @@ class MonarchLine {
   startStack!: string[]
   endStack!: string[]
   tokens!: MappedToken[]
-  embeds!: MonarchEmbeddedLang[]
+  embeds!: MonarchEmbeddedRange[]
   lastOffset!: number
   lastBuffer!: MappedToken[]
 
@@ -220,8 +220,8 @@ class MonarchLine {
     // get our starting state
     let stack: MonarchStack
     const lastLine = this.prev()
-    if (lastLine) stack = createMonarchStack(lastLine.endStack)
-    else stack = createMonarchStack([this.state.lexer.start ?? 'root'])
+    if (lastLine) stack = new MonarchStack(lastLine.endStack)
+    else stack = new MonarchStack([this.state.lexer.start ?? 'root'])
     this.startStack = stack.serialize()
     // tokenize
     const result = tokenize({ line, lexer: this.state.lexer, stack })
