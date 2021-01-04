@@ -26,8 +26,11 @@ export interface MonarchLanguageDefinition {
   configure?: MonarchConfigure
   /** A list of aliases for the name of the language. (e.g. 'go' -> ['golang']) */
   alias?: string[]
+  /** A list of file extensions. (e.g. ['.ts']) */
   ext?: string[]
+  /** The 'languageData' field for the language. CodeMirror plugins use this data to interact with the language. */
   languageData?: { [name: string]: any }
+  /** Extra extensions to be loaded. */
   extraExtensions?: Extension[]
 }
 
@@ -110,7 +113,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // TODO: allow 'emphasis.slash' where the '.slash' makes the 'emphasis' more specific, but uses the same scope
 // TODO: use the tree fragments to get the exact edited text positions (relatively close, anyways)
 // TODO: add action.transform
-// (matches, state, parser) => FuzzyAction | FuzzyAction[] | null
+// (matches, stack) => FuzzyAction | FuzzyAction[] | null
 
 // ? inspect tokens widgets? pls cm6 add it urself
 
