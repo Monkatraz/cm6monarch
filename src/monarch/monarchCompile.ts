@@ -276,11 +276,13 @@ function compileAction(lexer: ILexerMin, ruleName: string, action: any): FuzzyAc
 	else if (action.cases) {
 		// build an array of test cases
 		let cases: IBranch[] = []
+		let values = []
 
 		// for each case, push a test function and result value
 		for (let tkey in action.cases) {
 			if (action.cases.hasOwnProperty(tkey)) {
 				const val = compileAction(lexer, ruleName, action.cases[tkey])
+				values.push(val)
 
 				// what kind of case
 				if (tkey === '@default' || tkey === '@' || tkey === '')
@@ -297,6 +299,7 @@ function compileAction(lexer: ILexerMin, ruleName: string, action: any): FuzzyAc
 		// create a matching function
 		const def = lexer.defaultToken
 		return {
+			case_values: values,
 			test: function (id, matches, state, eos) {
 				for (const _case of cases)
 					if ((!_case.test || _case.test(id, matches, state, eos))) return _case.value
@@ -336,6 +339,8 @@ class Rule implements IRule {
 		// every action runs through here, so we can get our token set this way
 		if (typeof this.action === 'object' && 'group' in this.action)
 			this.action.group!.forEach(act => addTokens(act, tokenTypes))
+		if (typeof this.action === 'object' && 'case_values' in this.action)
+			this.action.case_values!.forEach(act => addTokens(act, tokenTypes))
 		else addTokens(this.action, tokenTypes)
 	}
 }

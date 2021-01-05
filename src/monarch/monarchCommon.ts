@@ -162,6 +162,7 @@ export interface IAction {
 
 	// or a function that returns a fresh action
 	test?: (id: string, matches: string[], state: string, eos: boolean) => FuzzyAction
+	case_values?: FuzzyAction[]
 
 	// or it is a declarative action with a token value and various other attributes
 	token?: string

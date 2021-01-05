@@ -408,8 +408,8 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
           buffer.push(token[0], token[1], token[2], 4)
           increment()
         }
-        // opening, checks for if the open and close strings are the same (closing has exclusivity)
-        if (token[3] && (!token[4] || (token[3][0] !== token[4][0] || (token[3][0] === token[4][0] && !closed)))) {
+        // opening
+        if (token[3]) {
           stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[0] && token[3][1] ? 1 : 0])
         }
       }
