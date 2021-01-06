@@ -87,12 +87,15 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // -- PARSER
 
 // TODO: indent handling
-// TODO: potentially find a way of line shifting (if new line, check next line for the string)
 // TODO: use monarch's brace handling automatically and get brace info into nodes
 // TODO: allow 'emphasis.slash' where the '.slash' makes the 'emphasis' more specific, but uses the same scope
 // TODO: use the tree fragments to get the exact edited text positions (relatively close, anyways)
 // TODO: add action.transform
 // (matches, stack) => FuzzyAction | FuzzyAction[] | null
+// TODO: new caching strategy - store every line of the current document in a map
+// that way it doesn't have to care about the specific line number
+// after a new tree has been parsed, the map is cleared (or just replaced)
+// that way there isn't any cache storage issues either, the map is just continously refreshed to the new state
 
 // ? multi-line 'token' mode?
 // ? inspect tokens widgets? pls cm6 add it urself

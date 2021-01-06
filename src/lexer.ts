@@ -215,7 +215,7 @@ export function tokenize(opts: TokenizeOpts) {
     let action: FuzzyAction | FuzzyAction[] | null = null
     let rule: IRule | null = null
 
-    let pushEmbedded = 0
+    let pushEmbedded: number | null = null
     let isEmbedded = stack.embedded !== null ? true : false
 
     // check if we need to process group matches first
@@ -302,7 +302,7 @@ export function tokenize(opts: TokenizeOpts) {
           if (isEmbedded) throw new Error(
             'attempted to nest more than one language in rule: ' + safeRuleName(rule))
           const embedded = substituteMatches(lexer, action.nextEmbedded, matched, matches, state)
-          const start = action.token === '@rematch' ? pos - matched.length : pos
+          const start = result === '@rematch' ? pos - matched.length : pos
           stack.setEmbedded(embedded, 0, start)
           pushEmbedded = start
         }
@@ -403,11 +403,12 @@ export function tokenize(opts: TokenizeOpts) {
         matched = ''
         matches = ['']
         result = ''
+        // have to put this here as we do not push tokens for a rematch
+        if (pushEmbedded !== null) tokens.push({ type: '_NEST_', start: pushEmbedded, end: pushEmbedded })
         // rematch but the token still needs to signal the parser
-        if (!isEmbedded && action && typeof action !== 'string' && action.parser) {
+        if (!isEmbedded && action && typeof action !== 'string' && action.parser)
           tokens.push({ type: '', start: pos0, end: pos, parser: action.parser })
-          if (pushEmbedded) tokens.push({ type: '_NEST_', start: pushEmbedded, end: pushEmbedded })
-        }
+
       }
 
       // do double checks on progress if we didn't match any characters
@@ -447,7 +448,7 @@ export function tokenize(opts: TokenizeOpts) {
           else tokens.push(token)
         }
       }
-      if (pushEmbedded) tokens.push({ type: '_NEST_', start: pushEmbedded, end: pushEmbedded })
+      if (pushEmbedded !== null) tokens.push({ type: '_NEST_', start: pushEmbedded, end: pushEmbedded })
     }
     // store the last state so that we can compare new tokens against an old ones (for merging them)
     last = { stack: stack.serialize(), token: tokens[tokens.length - 1] }
