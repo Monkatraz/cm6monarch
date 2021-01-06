@@ -92,6 +92,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // TODO: use the tree fragments to get the exact edited text positions (relatively close, anyways)
 // TODO: add action.transform
 // (matches, stack) => FuzzyAction | FuzzyAction[] | null
+// TODO: enums for mapped tokens to make them less impossible to decipher
 // TODO: new caching strategy - store every line of the current document in a map
 // that way it doesn't have to care about the specific line number
 // after a new tree has been parsed, the map is cleared (or just replaced)
@@ -379,48 +380,53 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
     const increment = () => stack.forEach(state => state[2]++)
     const buffer: number[] = []
     for (const token of tokens) {
+
+      const [type, start, end, open, close] = token
+
       // nesting lang handling
-      if (token[0] === -1) {
+      if (type === -1) {
         // undocumented features !!!!
         // passing a -1 to the size tells the tree builder to use the `reused` property
         // the ID of the token determines which slot in `reused` will take the place of this token
-        buffer.push(embedIdx, token[1], token[2], -1)
+        buffer.push(embedIdx, start, end, -1)
         embedIdx++
         increment()
       } else {
         // closing
-        let closed = 0
-        if (token[4] && stack.length) {
-          const idx = stack.map(state => state[0]).lastIndexOf(token[4][0])
+        if (close && stack.length) {
+
+          const [id, inclusive] = close
+
+          const idx = stack.map(state => state[0]).lastIndexOf(id)
           if (idx !== -1) {
             // cuts off anything past our closing stack element
             stack = stack.slice(0, idx + 1)
             // if we're inclusive of the end token we need to include it before we end the state
-            if (token[0] && token[4][1]) {
-              buffer.push(token[0], token[1], token[2], 4)
+            if (type && inclusive) {
+              buffer.push(type, start, end, 4)
               increment()
             }
-            const state = stack.pop()!
-            buffer.push(state[0], state[1], token[4][1] ? token[2] : token[1], (state[2] * 4) + 4)
+            const [startid, startpos, children] = stack.pop()!
+            buffer.push(startid, startpos, inclusive ? end : start, (children * 4) + 4)
             increment()
-            closed = 1
           }
         }
         // token itself
-        if (token[0] && !(token[4] && token[4][1])) {
-          buffer.push(token[0], token[1], token[2], 4)
+        if (type && !(close && close[1])) {
+          buffer.push(type, start, end, 4)
           increment()
         }
         // opening
-        if (token[3]) {
-          stack.push([token[3][0], token[3][1] ? token[1] : token[2], token[0] && token[3][1] ? 1 : 0])
+        if (open) {
+          const [id, inclusive] = open
+          stack.push([id, inclusive ? start : end, type && inclusive ? 1 : 0])
         }
       }
     }
     // handle unfinished stack
     while (stack.length) {
-      const state = stack.pop()!
-      buffer.push(state[0], state[1], pos(), (state[2] * 4) + 4)
+      const [startid, startpos, children] = stack.pop()!
+      buffer.push(startid, startpos, pos(), (children * 4) + 4)
       stack.forEach(state => state[2]++)
     }
 
