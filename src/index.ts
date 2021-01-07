@@ -92,14 +92,6 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // TODO: use the tree fragments to get the exact edited text positions (relatively close, anyways)
 // TODO: add action.transform
 // (matches, stack) => FuzzyAction | FuzzyAction[] | null
-// TODO: enums for mapped tokens to make them less impossible to decipher
-// TODO: new caching strategy - store every line of the current document in a map
-// that way it doesn't have to care about the specific line number
-// after a new tree has been parsed, the map is cleared (or just replaced)
-// that way there isn't any cache storage issues either, the map is just continously refreshed to the new state
-
-// ? multi-line 'token' mode?
-// ? inspect tokens widgets? pls cm6 add it urself
 
 // https://gist.github.com/hyamamoto/fd435505d29ebfa3d9716fd2be8d42f0#gistcomment-2694461
 function quickHash(s: string) {
@@ -184,8 +176,10 @@ function createMonarchState(
 
 /** Directs the parser to nest tokens using the node's type ID. */
 type MappedParserAction = [id: number, inclusive: number]
+
 /** A more efficient representation of `MonarchToken` used in the parser.  */
 type MappedToken = [type: number, start: number, end: number, open?: MappedParserAction, close?: MappedParserAction]
+
 /** Compiles a mapped token from a `MonarchToken` and a mapping of scope names to `NodeType` IDs. */
 function compileMappedToken(token: MonarchToken, map: Map<string, number>): MappedToken {
   let parserOpenAction: MappedParserAction | undefined
