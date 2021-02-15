@@ -1,6 +1,5 @@
 import { NodeSet, NodeType, Tree, stringInput } from 'lezer-tree'
 import { Language, EditorParseContext, LanguageSupport, languageDataProp, defineLanguageFacet, LanguageDescription } from '@codemirror/language'
-import { EditorState } from '@codemirror/state'
 import { Tag, tags, styleTags } from "@codemirror/highlight"
 
 import { compile } from './monarch/monarchCompile'
@@ -430,6 +429,8 @@ function monarchSimpleParse(hostState: MonarchState, input: Input, start: number
   // we don't actually use a character pos, so we fake a function for it
   const pos = () => { return froms[idxLine] }
 
+  const getTree = () => treeFromState(state, docLines.length, pos())
+
   return {
     // this advances the parser one line and returns 'null' to signify it has done so
     // or, it may parse one line and then be 'complete', and return the parse tree
@@ -469,13 +470,13 @@ function monarchSimpleParse(hostState: MonarchState, input: Input, start: number
       idxLine++
 
       // EOS
-      if (idxLine >= docLines.length) return treeFromState(state, docLines.length, pos())
+      if (idxLine >= docLines.length) return getTree()
       // parsed one line, ready for next advance call
       else return null
     },
     // these two functions complete the interface
     get pos() { return pos() },
-    forceFinish() { return treeFromState(state, docLines.length, pos()) }
+    forceFinish() { return getTree() }
   }
 }
 
@@ -505,6 +506,8 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
     if (!early) return idxLine > docLines.length ? input.length : context.state.doc.line(idxLine).from
     else return input.length
   }
+
+  const getTree = () => treeFromState(state, docLines.length, pos())
 
   return {
     // this advances the parser one line and returns 'null' to signify it has done so
@@ -550,16 +553,16 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
       // it will skip early if past the viewport and just use whatever is already in the cache until EOS
       if (docLines.length === state.lines.length && !lineUpdated && idxLine > viewportEndLine) {
         early = true
-        return treeFromState(state, docLines.length, pos())
+        return getTree()
       }
 
       // EOS
-      if (idxLine >= docLines.length) return treeFromState(state, docLines.length, pos())
+      if (idxLine >= docLines.length) return getTree()
       // parsed one line, ready for next advance call
       else return null
     },
     // these two functions complete the interface
     get pos() { return pos() },
-    forceFinish() { return treeFromState(state, docLines.length, pos()) }
+    forceFinish() { return getTree() }
   }
 }
