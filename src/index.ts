@@ -86,7 +86,6 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 
 // -- PARSER
 
-// TODO: indent handling
 // TODO: use monarch's brace handling automatically and get brace info into nodes
 // TODO: allow 'emphasis.slash' where the '.slash' makes the 'emphasis' more specific, but uses the same scope
 // TODO: use the tree fragments to get the exact edited text positions (relatively close, anyways)
@@ -94,10 +93,11 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
 // (matches, stack) => FuzzyAction | FuzzyAction[] | null
 
 // https://gist.github.com/hyamamoto/fd435505d29ebfa3d9716fd2be8d42f0#gistcomment-2694461
-function quickHash(s: string) {
+/** Very quickly generates a (non-secure) hash from the given string. */
+export function quickHash(s: string) {
   let h = 0
-  for (const c of s)
-    h = Math.imul(31, h) + c.charCodeAt(0) | 0
+  for (let i = 0; i < s.length; i++)
+  	h = Math.imul(31, h) + s.charCodeAt(i) | 0
   return h
 }
 
@@ -226,7 +226,6 @@ class MonarchEmbeddedParser {
       // parser loaded
       const host = this.lang.support.language.parser
       return (input: string, startPos: number) => {
-        const len = input.length
         const hash = quickHash(input)
 
         if (hash === this.hash && this.cache.length > 0) {
@@ -237,12 +236,7 @@ class MonarchEmbeddedParser {
         } else {
           // actual parser from language
           this.hash = hash
-          // isolated context shenanigans
-          // basically the nested parser is entirely unaware of the sorrounding document
-          const isolatedContext =
-            new (EditorParseContext as any)(host, EditorState.create({ doc: input }),
-              [], Tree.empty, { from: startPos, to: len }, [])
-          return host.startParse.bind(host)(stringInput(input), startPos, isolatedContext)
+          return host.startParse.bind(host)(stringInput(input), startPos, {})
         }
       }
     }
@@ -330,38 +324,11 @@ class MonarchLine {
   }
 }
 
-/** Returns a `PartialParse` compatible incremental parser using the given `MonarchState`. */
-function monarchParse(state: MonarchState, input: Input, start: number, context: EditorParseContext): PartialParse {
-
-  // set our viewport / start-end markers
-  if (start < context.viewport.from) start = context.viewport.from
-  const viewportEndLine = context.state.doc.lineAt(context.viewport.to).number - 1
-
-  // next we want our list of lines from the document, but with them clipped to the input length
-  const docLines = context.state.doc.slice(0, input.length).toJSON()
-
-  // current line idx
-  let idxLine = context.state.doc.lineAt(start).number - 1
-
-  // nesting, a line may have multiple nested langs so it needs to have an inline index
-  let nesting = false
-  let nestingIdx = 0
-  let nestingParser: PartialParse | null = null
-
-  // we don't actually use a character pos, so we fake a function for it
-  let early = false
-  const pos = () => {
-    if (!early) return idxLine > docLines.length ? input.length : context.state.doc.line(idxLine).from
-    else return input.length
-  }
-
-  // this function is called whenever codemirror wants to kill the parser and get the result
-  // it's also called when the parser itself has nothing left to do (or leaves early)
-  const getTree = () => {
+function treeFromState(state: MonarchState, to: number, pos: number) {
     // go through the cache/lines and get all of our tokens in a list
     let offset: number = 0
     const embeds: Tree[] = []
-    const tokens = state.lines.slice(0, docLines.length).flatMap(line => {
+    const tokens = state.lines.slice(0, to).flatMap(line => {
       let lineTokens = line.compile(offset)
       offset += line.length + 1
       embeds.push(...line.embeds.map(embed => embed.cache))
@@ -420,7 +387,7 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
     // handle unfinished stack
     while (stack.length) {
       const [startid, startpos, children] = stack.pop()!
-      buffer.push(startid, startpos, pos(), (children * 4) + 4)
+      buffer.push(startid, startpos, pos, (children * 4) + 4)
       stack.forEach(state => state[2]++)
     }
 
@@ -429,13 +396,114 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
 
     const tree = Tree.build({
       buffer: buffer,
-      length: pos(),
+      length: pos,
       topID: 0,
       reused: embeds,
       nodeSet: state.nodeSet
     })
 
     return tree
+}
+
+function monarchSimpleParse(hostState: MonarchState, input: Input, start: number) {
+
+  const state: MonarchState = { ...hostState, lines: [] }
+
+  // next we want our list of lines from the document, but with them clipped to the input length
+  const text = input.read(start, input.length)
+  const docLines = text.split('\n')
+
+  const newlines = text.matchAll(/\n/g)
+  const froms: number[] = [0]
+  for (const match of newlines) {
+    if (match.index) froms.push(match.index + 1)
+  }
+
+  // current line idx
+  let idxLine = 0
+
+  // nesting, a line may have multiple nested langs so it needs to have an inline index
+  let nesting = false
+  let nestingIdx = 0
+  let nestingParser: PartialParse | null = null
+
+  // we don't actually use a character pos, so we fake a function for it
+  const pos = () => { return froms[idxLine] }
+
+  return {
+    // this advances the parser one line and returns 'null' to signify it has done so
+    // or, it may parse one line and then be 'complete', and return the parse tree
+    // the advancing is controlled entirely by codemirror's scheduler
+    advance() {
+      const line = docLines[idxLine]
+      let cachedLine = state.lines[idxLine]
+      if (!cachedLine) {
+        state.lines[idxLine] = new MonarchLine(state, idxLine, line)
+        cachedLine = state.lines[idxLine]
+      }
+
+      // not parsing nested but needs to be
+      if (!nesting && cachedLine.embeds[nestingIdx]) {
+        nesting = true
+        const embed = cachedLine.embeds[nestingIdx]
+        // get absolute start and end from the relative line offsets
+        const start = froms[idxLine - embed.range.line] + embed.range.start
+        const end = froms[idxLine] + embed.range.end
+        nestingParser = embed.getParser()(input.read(start, end), 0, {} as any)
+      }
+
+      // already parsing nested
+      if (nesting && nestingParser) {
+        const done = nestingParser.advance()
+        if (done) {
+          nesting = false
+          nestingParser = null
+          cachedLine.embeds[nestingIdx].cache = done
+          nestingIdx++
+        }
+        else return null
+      }
+
+      // reset for next line
+      nestingIdx = 0
+      idxLine++
+
+      // EOS
+      if (idxLine >= docLines.length) return treeFromState(state, docLines.length, pos())
+      // parsed one line, ready for next advance call
+      else return null
+    },
+    // these two functions complete the interface
+    get pos() { return pos() },
+    forceFinish() { return treeFromState(state, docLines.length, pos()) }
+  }
+}
+
+/** Returns a `PartialParse` compatible incremental parser using the given `MonarchState`. */
+function monarchParse(state: MonarchState, input: Input, start: number, context: EditorParseContext): PartialParse {
+
+  if (!context.state) return monarchSimpleParse(state, input, start)
+
+  // set our viewport / start-end markers
+  if (start < context.viewport.from) start = context.viewport.from
+  const viewportEndLine = context.state.doc.lineAt(context.viewport.to).number - 1
+
+  // next we want our list of lines from the document, but with them clipped to the input length
+  const docLines = context.state.doc.slice(0, input.length).toJSON()
+
+  // current line idx
+  let idxLine = context.state.doc.lineAt(start).number - 1
+
+  // nesting, a line may have multiple nested langs so it needs to have an inline index
+  let nesting = false
+  let nestingIdx = 0
+  let nestingParser: PartialParse | null = null
+
+  // we don't actually use a character pos, so we fake a function for it
+  let early = false
+  const pos = () => {
+    if (!early) return idxLine > docLines.length ? input.length : context.state.doc.line(idxLine).from
+    else return input.length
   }
 
   return {
@@ -482,16 +550,16 @@ function monarchParse(state: MonarchState, input: Input, start: number, context:
       // it will skip early if past the viewport and just use whatever is already in the cache until EOS
       if (docLines.length === state.lines.length && !lineUpdated && idxLine > viewportEndLine) {
         early = true
-        return getTree()
+        return treeFromState(state, docLines.length, pos())
       }
 
       // EOS
-      if (idxLine >= docLines.length) return getTree()
+      if (idxLine >= docLines.length) return treeFromState(state, docLines.length, pos())
       // parsed one line, ready for next advance call
       else return null
     },
     // these two functions complete the interface
     get pos() { return pos() },
-    forceFinish() { return getTree() }
+    forceFinish() { return treeFromState(state, docLines.length, pos()) }
   }
 }
