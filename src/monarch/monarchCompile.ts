@@ -350,10 +350,11 @@ function addTokens(act: FuzzyAction, set: Set<string>) {
 	const token = typeof act === 'string' ? act : act?.token ?? ''
 	if (token && !token.startsWith('@')) set.add(token)
 	if (typeof act !== 'string' && act.parser) {
-		if ('open' in act.parser) set.add(act.parser.open!)
-		if ('close' in act.parser) set.add(act.parser.close!)
-		if ('start' in act.parser) set.add(act.parser.start!)
-		if ('end' in act.parser) set.add(act.parser.end!)
+		for (const type of ['open', 'close', 'start', 'end']) {
+			const scopes = (act.parser as any)[type] as string | string[] | undefined
+			if (typeof scopes === 'string') set.add(scopes)
+			else if (scopes) scopes.forEach(scope => set.add(scope))
+		}
 	}
 }
 

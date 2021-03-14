@@ -254,7 +254,7 @@ The _guard_ expression can be in one of four forms:
 | `@eos`     | Matches against the text being at the very end of the current line. |
 | `@default` | Matches against any input, like the `default` case in an ordinary `switch -> case` statement. |
 
-As eluded to, the previously shown 'regex' pattern is a short-hand for the syntax `[pat][op]match`. 
+As eluded to, the previously shown 'regex' pattern is a short-hand for the syntax `[pat][op]match`.
 
 The _pattern_ is any _substitution_, e.g. `$#`.
 
@@ -267,19 +267,19 @@ The _operator_ and _match_ are any of the following:
 
 #### `parser`
 
-The `parser` property attaches special meaning to the tokens it is defined on. Tokens with this property inform the parser to make special decisions, mainly the opening and closing syntax nodes.
+The `parser` property attaches special meaning to the tokens it is defined on. Tokens with this property inform the parser to make special decisions, mainly opening and closing syntax nodes.
 
 It can have two states, with two (optional) properties each:
 | | |
 | :-- | :-- |
-| `open or close` | This directs the parser to open or close the given syntax node _after_ or _before_ the matched token.
-| `start or end`  | This directs the parser to open or close the given syntax node _with_ the matched tokens _inside_ of the opened/closed node.
+| `open or close` | This directs the parser to open or close the given syntax nodes _after_ or _before_ the matched token.
+| `start or end`  | This directs the parser to open or close the given syntax nodes _with_ the matched tokens _inside_ of the opened/closed node.
 
 The 'syntax node' type given acts exactly like the `token` properties value type, with the exception of the `@rematch` string not being special. Generally, a language will use the `parser` property in conjunction with the capitalized `Foo` tags in order to support otherwise impossible language features.
 
 ```ts
-type Exclusive = { open?: string, close?: string }
-type Inclusive = { start?: string, end?: string }
+type Exclusive = { open?: string[] | string, close?: string[] | string }
+type Inclusive = { start?: string[] | string, end?: string[] | string}
 
 const exclusive = { token: 'foo', parser: { open: 'Block' } }
 const inclusive = { token: 'bar', parser: { end: 'Block' } }

@@ -174,7 +174,7 @@ function createMonarchState(
 }
 
 /** Directs the parser to nest tokens using the node's type ID. */
-type MappedParserAction = [id: number, inclusive: number]
+type MappedParserAction = [id: number, inclusive: number][]
 
 /** A more efficient representation of `MonarchToken` used in the parser.  */
 type MappedToken = [type: number, start: number, end: number, open?: MappedParserAction, close?: MappedParserAction]
@@ -184,14 +184,18 @@ function compileMappedToken(token: MonarchToken, map: Map<string, number>): Mapp
   let parserOpenAction: MappedParserAction | undefined
   let parserCloseAction: MappedParserAction | undefined
   if (token.parser) {
-    if ('open' in token.parser)
-      parserOpenAction = [map.get(token.parser.open!)!, 0]
-    if ('close' in token.parser)
-      parserCloseAction = [map.get(token.parser.close!)!, 0]
-    if ('start' in token.parser)
-      parserOpenAction = [map.get(token.parser.start!)!, 1]
-    if ('end' in token.parser)
-      parserCloseAction = [map.get(token.parser.end!)!, 1]
+    for (const type of ['open', 'close', 'start', 'end']) {
+      const closing = type === 'close' || type === 'end'
+      const inclusivity = +(type === 'start' || type === 'end')
+			const scopes = (token.parser as any)[type] as string | string[] | undefined
+			if (typeof scopes === 'string') {
+        if (!closing) parserOpenAction = [[map.get(scopes)!, inclusivity]]
+        else parserCloseAction = [[map.get(scopes)!, inclusivity]]
+      } else if (scopes) {
+        if (!closing) parserOpenAction = scopes.map(scope => [map.get(scope)!, inclusivity])
+        else parserCloseAction = scopes.map(scope => [map.get(scope)!, inclusivity])
+      }
+		}
   }
   let tokenType = 0
   if (token.type === '_NEST_') tokenType = -1
@@ -353,10 +357,7 @@ function treeFromState(state: MonarchState, to: number, pos: number) {
         increment()
       } else {
         // closing
-        if (close && stack.length) {
-
-          const [id, inclusive] = close
-
+        if (close && stack.length) close.forEach(([id, inclusive]) => {
           const idx = stack.map(state => state[0]).lastIndexOf(id)
           if (idx !== -1) {
             // cuts off anything past our closing stack element
@@ -370,17 +371,17 @@ function treeFromState(state: MonarchState, to: number, pos: number) {
             buffer.push(startid, startpos, inclusive ? end : start, (children * 4) + 4)
             increment()
           }
-        }
+        })
+
         // token itself
-        if (type && !(close && close[1])) {
+        if (type && !(close && close[0][1])) {
           buffer.push(type, start, end, 4)
           increment()
         }
         // opening
-        if (open) {
-          const [id, inclusive] = open
+        if (open) open.forEach(([id, inclusive]) => {
           stack.push([id, inclusive ? start : end, type && inclusive ? 1 : 0])
-        }
+        })
       }
     }
     // handle unfinished stack
