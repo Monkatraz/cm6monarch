@@ -244,7 +244,7 @@ class MonarchEmbeddedParser {
             const tree = (host as Language).parseString.bind(host)(input)
             return { advance() { return tree }, get pos() { return input.length }, forceFinish() { return tree } }
           }
-          return host.parser.startParse.bind(host)(stringInput(input), startPos, {})
+          return host.parser.startParse.bind(host.parser)(stringInput(input), startPos, {})
         }
       }
     }
