@@ -53,9 +53,12 @@ export type IMonarchLanguageRule = IShortMonarchLanguageRule1
 	| IExpandedMonarchLanguageRule
 
 
-export type IMonarchParserAction =
-	| { open?: string[] | string, close?: string[] | string }
-	| { start?: string[] | string, end?: string[] | string }
+export type IMonarchParserAction = {
+	open?: string[] | string
+	close?: string[] | string
+	start?: string[] | string
+	end?: string[] | string
+}
 
 /**
  * An action is either an array of actions...

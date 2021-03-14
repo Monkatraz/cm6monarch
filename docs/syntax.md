@@ -280,6 +280,7 @@ The 'syntax node' type given acts exactly like the `token` properties value type
 ```ts
 type Exclusive = { open?: string[] | string, close?: string[] | string }
 type Inclusive = { start?: string[] | string, end?: string[] | string}
+type ParserAction = Exclusive & Inclusive
 
 const exclusive = { token: 'foo', parser: { open: 'Block' } }
 const inclusive = { token: 'bar', parser: { end: 'Block' } }
