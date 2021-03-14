@@ -269,7 +269,7 @@ The _operator_ and _match_ are any of the following:
 
 The `parser` property attaches special meaning to the tokens it is defined on. Tokens with this property inform the parser to make special decisions, mainly opening and closing syntax nodes.
 
-It can have two states, with two (optional) properties each:
+It can have a combination of two states, with two (optional) properties each:
 | | |
 | :-- | :-- |
 | `open or close` | This directs the parser to open or close the given syntax nodes _after_ or _before_ the matched token.

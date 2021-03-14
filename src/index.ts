@@ -74,7 +74,7 @@ export function createMonarchLanguage(opts: MonarchLanguageDefinition): MonarchL
     const startParse = (input: Input, startPos: number, context: EditorParseContext) => {
       return monarchParse(parser, input, startPos, context)
     }
-    const lang = new Language(dataFacet, { startParse })
+    const lang = new Language(dataFacet, { startParse }, parser.nodeTypes[0])
 
     return new LanguageSupport(lang)
   }
