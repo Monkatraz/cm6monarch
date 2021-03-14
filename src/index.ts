@@ -227,7 +227,7 @@ class MonarchEmbeddedParser {
   getParser() {
     if (this.lang?.support) {
       // parser loaded
-      const host = this.lang.support.language.parser
+      const host = this.lang.support.language
       return (input: string, startPos: number) => {
         const hash = quickHash(input)
 
@@ -239,7 +239,12 @@ class MonarchEmbeddedParser {
         } else {
           // actual parser from language
           this.hash = hash
-          return host.startParse.bind(host)(stringInput(input), startPos, {})
+          if ('streamParser' in host) {
+            // can't use a stream parser incrementally, due to it requiring a context
+            const tree = (host as Language).parseString.bind(host)(input)
+            return { advance() { return tree }, get pos() { return input.length }, forceFinish() { return tree } }
+          }
+          return host.parser.startParse.bind(host)(stringInput(input), startPos, {})
         }
       }
     }
