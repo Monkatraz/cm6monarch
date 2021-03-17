@@ -337,23 +337,28 @@ class Rule implements IRule {
 	public setAction(lexer: ILexerMin, act: IAction, tokenTypes: Set<string>) {
 		this.action = compileAction(lexer, this.name, act)
 		// every action runs through here, so we can get our token set this way
-		if (typeof this.action === 'object' && 'group' in this.action)
-			this.action.group!.forEach(act => addTokens(act, tokenTypes))
-		if (typeof this.action === 'object' && 'case_values' in this.action)
-			this.action.case_values!.forEach(act => addTokens(act, tokenTypes))
-		else addTokens(this.action, tokenTypes)
+		addTokens(this.action, tokenTypes)
 	}
 }
 
 /** Parses an action and adds any tokens it finds to the lexer's token types. */
-function addTokens(act: FuzzyAction, set: Set<string>) {
-	const token = typeof act === 'string' ? act : act?.token ?? ''
+function addTokens(act: FuzzyAction, set: Set<string>, ) {
+	const token = typeof act === 'string' ? act : act.token ?? ''
 	if (token && !token.startsWith('@')) set.add(token)
-	if (typeof act !== 'string' && act.parser) {
-		for (const type of ['open', 'close', 'start', 'end']) {
-			const scopes = (act.parser as any)[type] as string | string[] | undefined
-			if (typeof scopes === 'string') set.add(scopes)
-			else if (scopes) scopes.forEach(scope => set.add(scope))
+	if (typeof act !== 'string') {
+
+		if (act.group)
+			act.group.forEach(sub => addTokens(sub, set))
+
+		if (act.case_values)
+			act.case_values.forEach(sub => addTokens(sub, set))
+
+		if (act.parser) {
+			for (const type of ['open', 'close', 'start', 'end']) {
+				const scopes = (act.parser as any)[type] as string | string[] | undefined
+				if (typeof scopes === 'string') set.add(scopes)
+				else if (scopes) scopes.forEach(scope => set.add(scope))
+			}
 		}
 	}
 }
